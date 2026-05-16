@@ -16,6 +16,9 @@ const buildOptions = {
   sourcemap: !production,
   minify: production,
   treeShaking: true,
+  loader: {
+    ".wasm": "copy",
+  },
 };
 
 async function main() {
