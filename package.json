@@ -242,9 +242,11 @@
     "package": "NODE_ENV=production node esbuild.js",
     "vscode:prepublish": "npm run package",
     "lint": "eslint src/",
+    "test:unit": "mocha",
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
@@ -254,6 +256,8 @@
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
+    "mocha": "^11.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.7.0"
   },
   "dependencies": {

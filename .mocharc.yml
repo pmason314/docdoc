@@ -1,0 +1,4 @@
+require:
+  - tsx/cjs
+spec: "src/test/unit/**/*.test.ts"
+timeout: 10000

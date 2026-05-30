@@ -38,7 +38,9 @@ var vscode2 = __toESM(require("vscode"));
 
 // src/trigger.ts
 var vscode = __toESM(require("vscode"));
-var DEF_RE = /^(\s*)def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*(.+?)\s*)?:\s*$/;
+
+// src/parser.ts
+var DEF_RE = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*(.+?)\s*)?:\s*$/;
 var CLASS_RE = /^(\s*)class\s+(\w+)/;
 var DECORATOR_RE = /^\s*@/;
 function splitParams(raw) {
@@ -77,17 +79,9 @@ function parseParam(token) {
   }
   return { name: withoutStars.trim(), annotation: null, hasDefault };
 }
-function isModuleLevel(document, startLine) {
-  for (let i = startLine; i >= 0; i--) {
-    const text = document.lineAt(i).text.trim();
-    if (text === "" || text.startsWith("#")) continue;
-    return false;
-  }
-  return true;
-}
-function findSignature(document, startLine) {
+function findSignatureFromLines(lines, startLine) {
   for (let i = startLine; i >= 0 && i >= startLine - 30; i--) {
-    const text = document.lineAt(i).text;
+    const text = lines[i];
     const defMatch = DEF_RE.exec(text);
     if (defMatch) {
       const rawParams = defMatch[3] ?? "";
@@ -116,29 +110,44 @@ function findSignature(document, startLine) {
   }
   return null;
 }
-function buildSnippet(sig, indent, quoteChar) {
-  const inner = indent + "    ";
-  const snippet = new vscode.SnippetString();
-  let tabStop = 1;
-  snippet.appendPlaceholder("_summary_", tabStop++);
+function isModuleLevelLines(lines, startLine) {
+  for (let i = startLine; i >= 0; i--) {
+    const text = lines[i].trim();
+    if (text === "" || text.startsWith("#")) continue;
+    return false;
+  }
+  return true;
+}
+function buildGoogleDocstring(sig, indent, quoteChar) {
+  const paramIndent = indent + "    ";
+  let n = 1;
+  let out = `\${${n++}:_summary_}`;
   if (sig.kind === "def" && sig.params.length > 0) {
-    snippet.appendText("\n\n" + inner + "Args:\n");
+    out += `
+
+${indent}Args:
+`;
     for (const p of sig.params) {
       const typeHint = p.annotation ? ` (${p.annotation})` : "";
-      snippet.appendText(inner + "    " + p.name + typeHint + ": ");
-      snippet.appendPlaceholder("_description_", tabStop++);
-      snippet.appendText("\n");
+      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:_description_}
+`;
     }
   }
   const skipReturn = sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
   if (!skipReturn) {
-    snippet.appendText("\n" + inner + "Returns:\n");
-    snippet.appendText(inner + "    " + sig.returnAnnotation + ": ");
-    snippet.appendPlaceholder("_description_", tabStop++);
-    snippet.appendText("\n");
+    out += `
+${indent}Returns:
+`;
+    out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}
+`;
   }
-  snippet.appendText(indent + quoteChar);
-  return snippet;
+  out += `${indent}${quoteChar}`;
+  return out;
+}
+
+// src/trigger.ts
+function docLines(document) {
+  return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
 }
 var DocstringTrigger = class {
   provideInlineCompletionItems(document, position, context, _token) {
@@ -149,19 +158,19 @@ var DocstringTrigger = class {
     if (!tripleQuoteMatch) return [];
     const indent = tripleQuoteMatch[1];
     const quoteChar = tripleQuoteMatch[2];
-    const sig = findSignature(document, position.line - 1);
-    let snippet;
+    const lines = docLines(document);
+    const sig = findSignatureFromLines(lines, position.line - 1);
+    let snippetValue;
     if (sig) {
-      snippet = buildSnippet(sig, indent, quoteChar);
-    } else if (isModuleLevel(document, position.line - 1)) {
-      snippet = new vscode.SnippetString();
-      snippet.appendPlaceholder("_summary_");
-      snippet.appendText("\n" + indent + quoteChar);
+      snippetValue = buildGoogleDocstring(sig, indent, quoteChar);
+    } else if (isModuleLevelLines(lines, position.line - 1)) {
+      snippetValue = `\${1:_summary_}
+${indent}${quoteChar}`;
     } else {
       return [];
     }
     const range = new vscode.Range(position, position.with(void 0, lineText.length));
-    return [new vscode.InlineCompletionItem(snippet, range)];
+    return [new vscode.InlineCompletionItem(new vscode.SnippetString(snippetValue), range)];
   }
 };
 
