@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { GenerateDocstringActionProvider } from "./codeAction";
 import { convert, convertFileFormat, generate, generateFile, update, updateFile } from "./commands";
+import { registerOnSaveHandler } from "./onSave";
 import { DocstringTrigger } from "./trigger";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -26,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
       { providedCodeActionKinds: GenerateDocstringActionProvider.providedKinds },
     ),
   );
-}
 
+  registerOnSaveHandler(context);
+}
 export function deactivate(): void {}

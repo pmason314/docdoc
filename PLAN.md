@@ -77,12 +77,14 @@ Depends on Phase 2. Requires parsing existing docstrings back into structured da
 
 ---
 
-## Phase 4 — On-Save Handler
+## Phase 4 — On-Save Handler ✅
 
 Depends on `generateFile` from Phase 2.
 
-- [ ] **`src/onSave.ts`** — on `onDidSaveTextDocument`, if `onSave.enable` is true, run the
-  generate-file logic.
+- [x] **`src/onSave.ts`** — on `onDidSaveTextDocument`, if `onSave.enable` is true, runs
+  `generateFileInsertions` and applies all insertions via `WorkspaceEdit`. Skips non-Python
+  files and files where every def/class is already documented. Registered in `extension.ts`
+  via `registerOnSaveHandler(context)`.
 
 ---
 
