@@ -408,8 +408,6 @@ export function applyInsertions(lines: string[], insertions: DocstringInsertion[
 // ---------------------------------------------------------------------------
 
 export interface MergeOpts {
-  /** Remove params no longer in the signature. Default: true. */
-  removeStaleParams?: boolean;
   /** Treat the function as a generator (Yields instead of Returns). Default: false. */
   isGenerator?: boolean;
 }
@@ -420,7 +418,7 @@ export interface MergeOpts {
  * - Params are ordered according to `sig` (sig is the authority).
  * - Existing descriptions are preserved when the param name matches.
  * - New params get `_description_` placeholder.
- * - Stale params are removed unless `opts.removeStaleParams` is false.
+ * - Stale params (no longer in the signature) are always removed.
  * - Summary, extended summary, raises, and unknown sections are preserved as-is.
  * - Returns/Yields typehint is updated from `sig.returnAnnotation`; description is kept.
  */
@@ -429,7 +427,7 @@ export function mergeDocstring(
   existing: ParsedDocstring,
   opts: MergeOpts = {},
 ): ParsedDocstring {
-  const { removeStaleParams = true, isGenerator = false } = opts;
+  const { isGenerator = false } = opts;
 
   const existingByName = new Map(existing.params.map((p) => [p.name, p]));
 
@@ -441,13 +439,6 @@ export function mergeDocstring(
       description: found?.description ?? "_description_",
     };
   });
-
-  if (!removeStaleParams) {
-    const sigNames = new Set(sig.params.map((p) => p.name));
-    for (const ep of existing.params) {
-      if (!sigNames.has(ep.name)) newParams.push(ep);
-    }
-  }
 
   const skipReturn =
     sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";

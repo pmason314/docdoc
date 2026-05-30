@@ -94,9 +94,8 @@ Wire up all the settings declared in `package.json`. Applies retroactively to al
 
 - [ ] **`src/config.ts`** — typed wrapper around `vscode.workspace.getConfiguration` returning a
   `DocstringOptions` struct.
-- [ ] Options to wire: `quoteStyle`, `includeTypesFromAnnotations`, `includeDefaults`,
-  `returns.skipNone`, `returns.requireAnnotation`, `detectGenerators`, `placeholders.summary`,
-  `placeholders.description`, `update.removeStaleParams`, `onSave.enable`,
+- [ ] Options to wire: `format`, `quoteStyle`, `includeTypesFromAnnotations`, `includeDefaults`,
+  `returns.mode`, `placeholders.summary`, `placeholders.description`, `onSave.enable`,
   `generateModuleDocstring`.
 - [ ] `generateModuleDocstring`: when true, `generateFileInsertions` inserts a module-level
   docstring if the file does not already begin with one (stub TODO already in parser.ts).
@@ -120,9 +119,16 @@ Depends on Phase 5 (`format` config option).
 ## Phase 7 — Advanced (lower priority)
 
 - [ ] Raises detection: scan function body for `raise X` tokens → emit `Raises:` section.
-- [ ] Dataclass `Attributes:` section (`includeClassAttributes` config).
-- [ ] `mergeInitParams`: hoist `__init__` params into the class-level docstring.
-- [ ] AI generation via VS Code LM API (`ai.*` config group).
+- [ ] `generateModuleDocstring` implementation (stub already in parser.ts).
+
+---
+
+## Stretch Goals
+
+- Subprocess-based precise raises analysis using the workspace Python interpreter.
+- `mergeInitParams`: hoist `__init__` params into the class-level docstring.
+- Dataclass `Attributes:` section.
+- AI generation via VS Code LM API.
 
 ---
 
@@ -135,16 +141,16 @@ Depends on Phase 5 (`format` config option).
 | `src/extension.ts`                          | exists        | Activation, provider/command registration                                                              |
 | `src/commands.ts`                           | exists        | `generate`, `generateFile` (Phase 2); `update`, `updateFile`, `convert`, `convertFileFormat` (Phase 3) |
 | `src/codeAction.ts`                         | exists        | Lightbulb code action provider                                                                         |
-| `src/docstringParser.ts`                    | **to create** | Parse existing docstring sections; merge logic; render                                                 |
-| `src/onSave.ts`                             | **to create** | On-save trigger                                                                                        |
+| `src/docstringParser.ts`                    | exists        | Parse existing docstring sections; merge logic; render                                                 |
+| `src/onSave.ts`                             | exists        | On-save trigger                                                                                        |
 | `src/config.ts`                             | **to create** | Typed config reader                                                                                    |
-| `src/test/unit/parser.test.ts`              | exists        | 91 tests (sig parsing, builders, file insertions)                                                      |
+| `src/test/unit/parser.test.ts`              | exists        | Sig parsing, builders, file insertions                                                                 |
 | `src/test/unit/commands.test.ts`            | exists        | hasDocstring, buildGoogleDocstringText, generateFileInsertions, applyInsertions                        |
-| `src/test/unit/docstringParser.test.ts`     | **to create** | parseGoogleDocstring, mergeDocstring, renderGoogleDocstring, buildUpdateText                           |
+| `src/test/unit/docstringParser.test.ts`     | exists        | parseGoogleDocstring, mergeDocstring, renderGoogleDocstring, buildUpdateText                           |
 | `src/test/integration/generateFile.test.ts` | exists        | Fixture-driven generate tests                                                                          |
-| `src/test/integration/updateFile.test.ts`   | **to create** | Fixture-driven update tests                                                                            |
+| `src/test/integration/updateFile.test.ts`   | exists        | Fixture-driven update tests                                                                            |
 | `src/test/fixtures/basic.input.py`          | exists        | Input for generate integration test                                                                    |
 | `src/test/fixtures/basic.expected.py`       | exists        | Expected output for generate integration test                                                          |
-| `src/test/fixtures/update.input.py`         | **to create** | Input for update integration test (stale docstrings)                                                   |
-| `src/test/fixtures/update.expected.py`      | **to create** | Expected output for update integration test                                                            |
+| `src/test/fixtures/update.input.py`         | exists        | Input for update integration test (stale docstrings)                                                   |
+| `src/test/fixtures/update.expected.py`      | exists        | Expected output for update integration test                                                            |
 

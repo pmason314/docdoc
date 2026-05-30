@@ -391,7 +391,7 @@ describe("mergeDocstring", () => {
     assert.equal(merged.params[1].description, "_description_");
   });
 
-  it("stale param removed by default (removeStaleParams=true)", () => {
+  it("stale params removed", () => {
     const existing = existingDoc({
       params: [
         { name: "a", typehint: "int", description: "first arg" },
@@ -407,24 +407,6 @@ describe("mergeDocstring", () => {
     const merged = mergeDocstring(sig, existing);
     assert.equal(merged.params.length, 1);
     assert.equal(merged.params[0].name, "a");
-  });
-
-  it("stale param retained when removeStaleParams=false", () => {
-    const existing = existingDoc({
-      params: [
-        { name: "a", typehint: "int", description: "first arg" },
-        { name: "old", typehint: null, description: "stale" },
-      ],
-    });
-    const sig: ParsedSignature = {
-      kind: "def",
-      name: "f",
-      params: [{ name: "a", annotation: "int", hasDefault: false }],
-      returnAnnotation: null,
-    };
-    const merged = mergeDocstring(sig, existing, { removeStaleParams: false });
-    assert.equal(merged.params.length, 2);
-    assert.equal(merged.params[1].name, "old");
   });
 
   it("return annotation updated, description preserved", () => {
@@ -693,7 +675,7 @@ describe("buildUpdateText", () => {
     assert.ok(result.text.includes("a (int): the number")); // preserved
   });
 
-  it("stale param removed by default", () => {
+  it("stale param removed", () => {
     const lines = [
       "def foo(a: int) -> None:",
       '    """_summary_',
@@ -707,22 +689,6 @@ describe("buildUpdateText", () => {
     const result = buildUpdateText(lines, 0);
     assert.ok(result);
     assert.ok(!result.text.includes("old:"));
-  });
-
-  it("stale param retained when removeStaleParams=false", () => {
-    const lines = [
-      "def foo(a: int) -> None:",
-      '    """_summary_',
-      "",
-      "    Args:",
-      "        a (int): the number",
-      "        old: stale param",
-      '    """',
-      "    pass",
-    ];
-    const result = buildUpdateText(lines, 0, { removeStaleParams: false });
-    assert.ok(result);
-    assert.ok(result.text.includes("old: stale param"));
   });
 
   it("one-liner docstring updated to multi-line when param added", () => {

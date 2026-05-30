@@ -117,16 +117,6 @@
           ],
           "description": "Quote style for generated docstrings."
         },
-        "docstringGenerator.trigger.tripleQuote": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable the triple-quote auto-expand trigger."
-        },
-        "docstringGenerator.trigger.codeAction": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the lightbulb code action on undocumented functions."
-        },
         "docstringGenerator.onSave.enable": {
           "type": "boolean",
           "default": false,
@@ -142,55 +132,25 @@
           "default": true,
           "description": "Append 'Defaults to X.' in the parameter description when a default value is present."
         },
-        "docstringGenerator.includeExtendedSummary": {
-          "type": "boolean",
-          "default": false,
-          "description": "Include an extended summary placeholder section after the one-line summary."
-        },
-        "docstringGenerator.returns.skipNone": {
-          "type": "boolean",
-          "default": true,
-          "description": "Suppress the Returns section when the return annotation is None or absent."
-        },
-        "docstringGenerator.returns.requireAnnotation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Only emit a Returns section when a return annotation is present."
-        },
-        "docstringGenerator.detectGenerators": {
-          "type": "boolean",
-          "default": true,
-          "description": "Emit Yields instead of Returns for generator functions."
-        },
-        "docstringGenerator.raises.useSubprocess": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use the workspace Python interpreter for precise raises analysis."
-        },
-        "docstringGenerator.raises.useSimpleScan": {
-          "type": "boolean",
-          "default": true,
-          "description": "Fall back to tree-sitter token scanning for raises when no interpreter is available."
+        "docstringGenerator.returns.mode": {
+          "type": "string",
+          "default": "when-annotated",
+          "enum": [
+            "when-annotated",
+            "non-none",
+            "always"
+          ],
+          "enumDescriptions": [
+            "Emit Returns only when a non-None return annotation is present.",
+            "Emit Returns for any non-None annotation; skip if unannotated or -> None.",
+            "Always emit Returns, even for unannotated functions and -> None."
+          ],
+          "description": "When to emit a Returns (or Yields) section."
         },
         "docstringGenerator.generateModuleDocstring": {
           "type": "boolean",
           "default": false,
           "description": "When running Generate Docstrings for File, also insert a module-level docstring if the file does not already have one."
-        },
-        "docstringGenerator.mergeInitParams": {
-          "type": "boolean",
-          "default": false,
-          "description": "Hoist __init__ parameters into the class-level docstring."
-        },
-        "docstringGenerator.includeClassAttributes": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include an Attributes section for class-level annotated assignments and dataclass fields."
-        },
-        "docstringGenerator.update.removeStaleParams": {
-          "type": "boolean",
-          "default": true,
-          "description": "Remove parameter entries no longer present in the signature."
         },
         "docstringGenerator.placeholders.summary": {
           "type": "string",
@@ -201,42 +161,6 @@
           "type": "string",
           "default": "_description_",
           "description": "Placeholder text for parameter and return descriptions."
-        },
-        "docstringGenerator.pythonPath": {
-          "type": "string",
-          "default": "",
-          "description": "Explicit path to the Python interpreter. If empty, uses the interpreter selected by the Python extension."
-        },
-        "docstringGenerator.ai.generateSummary": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use the VS Code LM API to generate the summary line."
-        },
-        "docstringGenerator.ai.generateParamDescriptions": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use the VS Code LM API to generate parameter descriptions."
-        },
-        "docstringGenerator.ai.generateReturnDescription": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use the VS Code LM API to generate the return description."
-        },
-        "docstringGenerator.ai.includeBodyContext": {
-          "type": "boolean",
-          "default": false,
-          "description": "Send the function body to the LM for richer context."
-        },
-        "docstringGenerator.ai.maxBodyTokens": {
-          "type": "number",
-          "default": 500,
-          "minimum": 0,
-          "description": "Maximum number of tokens from the function body to include in the LM prompt."
-        },
-        "docstringGenerator.ai.modelFamily": {
-          "type": "string",
-          "default": "",
-          "description": "Pin to a specific LM model family (e.g., 'claude-haiku', 'gpt-4o'). If empty, the best available model is selected automatically."
         }
       }
     }
