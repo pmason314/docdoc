@@ -1,3 +1,6 @@
+import type { ParsedDocstring, ParsedDocstringParam } from "./docstringParser";
+import { parseGoogleDocstring } from "./docstringParser";
+
 // Matches: def foo(...) -> bool:   also handles async def
 export const DEF_RE = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*(.+?)\s*)?:\s*$/;
 // Matches: class Foo:  or  class Foo(Base):
@@ -398,4 +401,217 @@ export function applyInsertions(lines: string[], insertions: DocstringInsertion[
     offset++;
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3b: merge, render, update
+// ---------------------------------------------------------------------------
+
+export interface MergeOpts {
+  /** Remove params no longer in the signature. Default: true. */
+  removeStaleParams?: boolean;
+  /** Treat the function as a generator (Yields instead of Returns). Default: false. */
+  isGenerator?: boolean;
+}
+
+/**
+ * Merge a (possibly updated) signature into an existing parsed docstring.
+ *
+ * - Params are ordered according to `sig` (sig is the authority).
+ * - Existing descriptions are preserved when the param name matches.
+ * - New params get `_description_` placeholder.
+ * - Stale params are removed unless `opts.removeStaleParams` is false.
+ * - Summary, extended summary, raises, and unknown sections are preserved as-is.
+ * - Returns/Yields typehint is updated from `sig.returnAnnotation`; description is kept.
+ */
+export function mergeDocstring(
+  sig: ParsedSignature,
+  existing: ParsedDocstring,
+  opts: MergeOpts = {},
+): ParsedDocstring {
+  const { removeStaleParams = true, isGenerator = false } = opts;
+
+  const existingByName = new Map(existing.params.map((p) => [p.name, p]));
+
+  const newParams: ParsedDocstringParam[] = sig.params.map((p) => {
+    const found = existingByName.get(p.name);
+    return {
+      name: p.name,
+      typehint: p.annotation ?? null,
+      description: found?.description ?? "_description_",
+    };
+  });
+
+  if (!removeStaleParams) {
+    const sigNames = new Set(sig.params.map((p) => p.name));
+    for (const ep of existing.params) {
+      if (!sigNames.has(ep.name)) newParams.push(ep);
+    }
+  }
+
+  const skipReturn =
+    sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
+
+  let newReturns: ParsedDocstring["returns"] = null;
+  let newYields: ParsedDocstring["yields"] = null;
+
+  if (!skipReturn) {
+    const existingDesc =
+      (isGenerator ? existing.yields?.description : existing.returns?.description) ??
+      existing.returns?.description ??
+      existing.yields?.description ??
+      "_description_";
+
+    if (isGenerator) {
+      newYields = { typehint: sig.returnAnnotation, description: existingDesc };
+    } else {
+      newReturns = { typehint: sig.returnAnnotation, description: existingDesc };
+    }
+  }
+
+  return {
+    summary: existing.summary,
+    extendedSummary: existing.extendedSummary,
+    params: newParams,
+    returns: newReturns,
+    yields: newYields,
+    raises: existing.raises,
+    unknownSections: existing.unknownSections,
+  };
+}
+
+/**
+ * Render a `ParsedDocstring` back to a plain-text Google docstring string.
+ * Multi-line descriptions are re-indented with one extra level of indentation
+ * (continuation lines at `paramIndent + "    "`).
+ * Produces a one-liner when there are no sections.
+ */
+export function renderGoogleDocstring(
+  parsed: ParsedDocstring,
+  indent: string,
+  quoteChar: string,
+): string {
+  const paramIndent = indent + "    ";
+  const contIndent = paramIndent + "    ";
+
+  /** Render a description that may contain embedded newlines. */
+  function renderDesc(firstPrefix: string, desc: string): string {
+    const lines = desc.split("\n");
+    let s = `${firstPrefix}${lines[0]}\n`;
+    for (let i = 1; i < lines.length; i++) s += `${contIndent}${lines[i]}\n`;
+    return s;
+  }
+
+  const hasContent =
+    parsed.params.length > 0 ||
+    parsed.returns !== null ||
+    parsed.yields !== null ||
+    parsed.raises.length > 0 ||
+    parsed.unknownSections.length > 0 ||
+    parsed.extendedSummary !== "";
+
+  if (!hasContent) {
+    return `${indent}${quoteChar}${parsed.summary}${quoteChar}`;
+  }
+
+  let out = `${indent}${quoteChar}${parsed.summary}\n`;
+
+  if (parsed.extendedSummary) {
+    out += `\n${parsed.extendedSummary}\n`;
+  }
+
+  if (parsed.params.length > 0) {
+    out += `\n${indent}Args:\n`;
+    for (const p of parsed.params) {
+      const typeHint = p.typehint ? ` (${p.typehint})` : "";
+      out += renderDesc(`${paramIndent}${p.name}${typeHint}: `, p.description);
+    }
+  }
+
+  const returnsEntry = parsed.yields ?? parsed.returns;
+  if (returnsEntry) {
+    const label = parsed.yields !== null ? "Yields" : "Returns";
+    out += `\n${indent}${label}:\n`;
+    out += renderDesc(`${paramIndent}${returnsEntry.typehint}: `, returnsEntry.description);
+  }
+
+  if (parsed.raises.length > 0) {
+    out += `\n${indent}Raises:\n`;
+    for (const r of parsed.raises) {
+      out += renderDesc(`${paramIndent}${r.exception}: `, r.description);
+    }
+  }
+
+  for (const section of parsed.unknownSections) {
+    out += `\n${indent}${section.header}:\n`;
+    for (const l of section.lines) out += `${l}\n`;
+  }
+
+  out += `${indent}${quoteChar}`;
+  return out;
+}
+
+/** Return value of {@link buildUpdateText}. */
+export interface UpdateTextResult {
+  /** Fully rendered replacement docstring text. */
+  text: string;
+  /** 0-based line index of the existing docstring's opening quotes. */
+  startLine: number;
+  /** 0-based line index of the existing docstring's closing quotes. */
+  endLine: number;
+}
+
+/**
+ * High-level helper for the `update` command.
+ *
+ * Given the source lines and the 0-based index of the `def`/`class` line,
+ * finds the existing docstring, parses it, merges with the current signature,
+ * and renders the result ready to splice in via `WorkspaceEdit.replace`.
+ *
+ * Returns `null` when there is no existing docstring to update.
+ */
+export function buildUpdateText(
+  lines: string[],
+  defLine: number,
+  opts: MergeOpts = {},
+): UpdateTextResult | null {
+  const found = findSignatureFromLines(lines, defLine);
+  if (!found) return null;
+
+  // Locate sigEndLine (last line of the signature — the `:` line)
+  let sigEndLine = defLine;
+  if (!lines[defLine].trimEnd().endsWith(":")) {
+    let depth = 0;
+    for (const ch of lines[defLine]) {
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+    }
+    let j = defLine + 1;
+    while (j < lines.length && depth > 0) {
+      for (const ch of lines[j]) {
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      j++;
+    }
+    sigEndLine = j - 1;
+  }
+
+  // Find the docstring opening line in the body (first non-blank line after sig)
+  let docOpenLine = -1;
+  for (let i = sigEndLine + 1; i < Math.min(lines.length, sigEndLine + 6); i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "") continue;
+    if (trimmed.startsWith('"""') || trimmed.startsWith("'''")) docOpenLine = i;
+    break;
+  }
+  if (docOpenLine === -1) return null;
+
+  const parseResult = parseGoogleDocstring(lines, docOpenLine);
+  if (!parseResult) return null;
+
+  const merged = mergeDocstring(found.sig, parseResult.parsed, opts);
+  const text = renderGoogleDocstring(merged, parseResult.indent, parseResult.quoteChar);
+
+  return { text, startLine: parseResult.startLine, endLine: parseResult.endLine };
 }

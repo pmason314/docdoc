@@ -2,11 +2,10 @@
 
 ## Current State
 
-The triple-quote inline completion trigger works end-to-end: typing `"""` or `'''` after a
-`def`/`class` produces Google-style ghost text with tab-completable placeholders. Multi-line
-signatures, `*args`/`**kwargs` prefix display, and generator detection (`Yields:`) are all
-implemented. 63 unit tests pass. No config is read, no commands are implemented, no other
-formats exist.
+91 tests passing. Phase 2 is complete: the `generate`, `generateFile` commands and the
+lightbulb code action provider are all implemented and tested. Fixture-based integration tests
+confirm end-to-end correctness of the file-wide generator. No config is read yet; all builders
+use hardcoded Google style.
 
 ---
 
@@ -19,36 +18,60 @@ formats exist.
 
 ---
 
-## Phase 2 — Generate + Code Action
+## Phase 2 — Generate + Code Action ✅
 
-First useful commands. Uses hardcoded Google style (no config yet).
-
-- [ ] **`src/commands.ts`** — `generate` command: find the signature at cursor, build a docstring,
-  insert it via `WorkspaceEdit` on the line after the `def`/`class`.
-- [ ] **`src/commands.ts`** — `generateFile` command: scan every `def`/`class` in the document
-  that lacks a docstring and insert one for each.
-- [ ] **`src/codeAction.ts`** — `CodeActionProvider` that detects undocumented functions in the
-  visible range and offers a "Generate docstring" lightbulb quick fix.
-- [ ] Register commands and provider in `extension.ts`.
-- [ ] Unit tests for insertion logic in `src/test/unit/commands.test.ts`.
-- [ ] Integration tests in `src/test/integration/generateFile.test.ts` — read
-  `src/test/fixtures/*.input.py`, run the pure transform, compare against `*.expected.py`.
+- [x] `generate` command (`src/commands.ts`) — inserts a docstring at cursor via `WorkspaceEdit`
+- [x] `generateFile` command (`src/commands.ts`) — inserts docstrings for every undocumented
+  `def`/`class` in the document
+- [x] `CodeActionProvider` (`src/codeAction.ts`) — lightbulb quick fix for undocumented functions
+- [x] Commands and provider registered in `extension.ts`
+- [x] Unit tests in `src/test/unit/commands.test.ts` (hasDocstring, buildGoogleDocstringText,
+  generateFileInsertions, applyInsertions)
+- [x] Integration tests in `src/test/integration/generateFile.test.ts` — fixture-driven,
+  auto-discovers all `*.input.py` / `*.expected.py` pairs
 
 ---
 
 ## Phase 3 — Update + Convert
 
-Depends on Phase 2. Requires parsing existing docstrings.
+Depends on Phase 2. Requires parsing existing docstrings back into structured data.
 
-- [ ] **`src/docstringParser.ts`** — parse sections out of an existing Google-style docstring
-  (params list, returns entry). Extend to NumPy/Sphinx in Phase 5.
-- [ ] `update` command: merge the current signature with the existing docstring — add new params,
-  remove stale entries (per `update.removeStaleParams` config).
-- [ ] `updateFile` command: apply `update` to every documented function in the file.
-- [ ] `convert` command: re-render an existing docstring in the target format (Google-only for
-  now; extended in Phase 5).
-- [ ] `convertFileFormat` command: apply `convert` file-wide.
-- [ ] Tests for merge logic, stale param removal, and round-trip conversion.
+### 3a — Docstring parser (`src/docstringParser.ts`) ✅
+
+- [x] `ParsedDocstring`, `ParsedDocstringParam`, `ParsedDocstringRaise`, `DocstringParseResult` types
+- [x] `parseGoogleDocstring(lines, openingLine)` — one-liners, multi-line, all sections
+  (Args/Returns/Yields/Raises), continuation lines, bracket-aware colon split, single-quote
+  delimiters, unknown sections preserved verbatim
+- [x] 27 unit tests in `src/test/unit/docstringParser.test.ts`
+
+### 3b — Update logic (`src/parser.ts` additions) ✅
+
+- [x] `mergeDocstring(sig, existing, opts)` — sig-authoritative param list, descriptions
+  carried over, `removeStaleParams` option, Returns/Yields updated from sig
+- [x] `renderGoogleDocstring(parsed, indent, quoteChar)` — serialises back to plain text;
+  one-liner when no sections; handles multi-line descriptions and unknown sections
+- [x] `buildUpdateText(lines, defLine, opts?)` — finds existing docstring, parse → merge →
+  render, returns `{ text, startLine, endLine }` for `WorkspaceEdit.replace`
+- [x] 30 unit tests added to `src/test/unit/docstringParser.test.ts` (mergeDocstring × 10,
+  renderGoogleDocstring × 9, buildUpdateText × 6)
+
+### 3c — Update + Convert commands (`src/commands.ts` additions)
+
+- [ ] `update(editor)` — replaces the docstring of the function at cursor using `buildUpdateText`
+- [ ] `updateFile(editor)` — applies `update` logic to every documented function in the file via
+  a single `WorkspaceEdit` with multiple `replace` operations
+- [ ] `convert(editor)` — re-renders the docstring at cursor in the target format (Google-only
+  until Phase 6; for now, a no-op round-trip that normalises formatting)
+- [ ] `convertFileFormat(editor)` — applies `convert` file-wide
+- [ ] Register all four commands in `extension.ts`
+
+### 3d — Integration tests
+
+- [ ] `src/test/fixtures/update.input.py` — Python file with already-documented functions whose
+  signatures have since changed (added param, removed param, changed return type)
+- [ ] `src/test/fixtures/update.expected.py` — expected output after running `updateFile`
+- [ ] `src/test/integration/updateFile.test.ts` — fixture-driven test mirroring
+  `generateFile.test.ts` but calling the update transform
 
 ---
 
@@ -101,19 +124,23 @@ Depends on Phase 5 (`format` config option).
 
 ## File Map
 
-| File                                        | Status        | Role                                                                               |
-| ------------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
-| `src/parser.ts`                             | exists        | Pure logic: parsing, snippet building                                              |
-| `src/trigger.ts`                            | exists        | Inline completion provider (vscode adapter)                                        |
-| `src/extension.ts`                          | exists        | Activation, provider/command registration                                          |
-| `src/commands.ts`                           | **to create** | `generate`, `generateFile`, `update`, `updateFile`, `convert`, `convertFileFormat` |
-| `src/codeAction.ts`                         | **to create** | Lightbulb code action provider                                                     |
-| `src/docstringParser.ts`                    | **to create** | Parse existing docstring sections                                                  |
-| `src/onSave.ts`                             | **to create** | On-save trigger                                                                    |
-| `src/config.ts`                             | **to create** | Typed config reader                                                                |
-| `src/test/unit/parser.test.ts`              | exists        | 63 tests                                                                           |
-| `src/test/unit/commands.test.ts`            | **to create** | Command logic tests                                                                |
-| `src/test/unit/docstringParser.test.ts`     | **to create** | Docstring parsing tests                                                            |
-| `src/test/integration/generateFile.test.ts` | **to create** | Fixture-driven generate tests                                                      |
-| `src/test/fixtures/*.input.py`              | **to create** | Input Python files for integration tests                                           |
-| `src/test/fixtures/*.expected.py`           | **to create** | Expected output for integration tests                                              |
+| File                                        | Status        | Role                                                                                                   |
+| ------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/parser.ts`                             | exists        | Pure logic: sig parsing, docstring building, file insertions                                           |
+| `src/trigger.ts`                            | exists        | Inline completion provider (vscode adapter)                                                            |
+| `src/extension.ts`                          | exists        | Activation, provider/command registration                                                              |
+| `src/commands.ts`                           | exists        | `generate`, `generateFile` (Phase 2); `update`, `updateFile`, `convert`, `convertFileFormat` (Phase 3) |
+| `src/codeAction.ts`                         | exists        | Lightbulb code action provider                                                                         |
+| `src/docstringParser.ts`                    | **to create** | Parse existing docstring sections; merge logic; render                                                 |
+| `src/onSave.ts`                             | **to create** | On-save trigger                                                                                        |
+| `src/config.ts`                             | **to create** | Typed config reader                                                                                    |
+| `src/test/unit/parser.test.ts`              | exists        | 91 tests (sig parsing, builders, file insertions)                                                      |
+| `src/test/unit/commands.test.ts`            | exists        | hasDocstring, buildGoogleDocstringText, generateFileInsertions, applyInsertions                        |
+| `src/test/unit/docstringParser.test.ts`     | **to create** | parseGoogleDocstring, mergeDocstring, renderGoogleDocstring, buildUpdateText                           |
+| `src/test/integration/generateFile.test.ts` | exists        | Fixture-driven generate tests                                                                          |
+| `src/test/integration/updateFile.test.ts`   | **to create** | Fixture-driven update tests                                                                            |
+| `src/test/fixtures/basic.input.py`          | exists        | Input for generate integration test                                                                    |
+| `src/test/fixtures/basic.expected.py`       | exists        | Expected output for generate integration test                                                          |
+| `src/test/fixtures/update.input.py`         | **to create** | Input for update integration test (stale docstrings)                                                   |
+| `src/test/fixtures/update.expected.py`      | **to create** | Expected output for update integration test                                                            |
+
