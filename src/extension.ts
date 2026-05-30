@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { GenerateDocstringActionProvider } from "./codeAction";
-import { generate, generateFile } from "./commands";
+import { convert, convertFileFormat, generate, generateFile, update, updateFile } from "./commands";
 import { DocstringTrigger } from "./trigger";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -12,6 +12,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
     vscode.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
+    vscode.commands.registerTextEditorCommand("docstringGenerator.update", update),
+    vscode.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
+    vscode.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
+    vscode.commands.registerTextEditorCommand(
+      "docstringGenerator.convertFileFormat",
+      convertFileFormat,
+    ),
 
     vscode.languages.registerCodeActionsProvider(
       { language: "python" },

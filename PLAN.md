@@ -3,9 +3,9 @@
 ## Current State
 
 91 tests passing. Phase 2 is complete: the `generate`, `generateFile` commands and the
-lightbulb code action provider are all implemented and tested. Fixture-based integration tests
-confirm end-to-end correctness of the file-wide generator. No config is read yet; all builders
-use hardcoded Google style.
+lightbulb code action provider are all implemented and tested. Phase 3 (update + convert) is
+complete: docstring parsing, merge/render logic, all four commands, and fixture-based integration
+tests. No config is read yet; all builders use hardcoded Google style.
 
 ---
 
@@ -32,7 +32,7 @@ use hardcoded Google style.
 
 ---
 
-## Phase 3 — Update + Convert
+## Phase 3 — Update + Convert ✅
 
 Depends on Phase 2. Requires parsing existing docstrings back into structured data.
 
@@ -55,23 +55,25 @@ Depends on Phase 2. Requires parsing existing docstrings back into structured da
 - [x] 30 unit tests added to `src/test/unit/docstringParser.test.ts` (mergeDocstring × 10,
   renderGoogleDocstring × 9, buildUpdateText × 6)
 
-### 3c — Update + Convert commands (`src/commands.ts` additions)
+### 3c — Update + Convert commands (`src/commands.ts` additions) ✅
 
-- [ ] `update(editor)` — replaces the docstring of the function at cursor using `buildUpdateText`
-- [ ] `updateFile(editor)` — applies `update` logic to every documented function in the file via
-  a single `WorkspaceEdit` with multiple `replace` operations
-- [ ] `convert(editor)` — re-renders the docstring at cursor in the target format (Google-only
-  until Phase 6; for now, a no-op round-trip that normalises formatting)
-- [ ] `convertFileFormat(editor)` — applies `convert` file-wide
-- [ ] Register all four commands in `extension.ts`
+- [x] `update(editor)` — replaces the docstring at cursor using `buildUpdateText` via
+  `WorkspaceEdit.replace`
+- [x] `updateFile(editor)` — applies update to every documented def/class in the file in a
+  single `WorkspaceEdit`
+- [x] `convert(editor)` — re-renders the docstring at/above the cursor in normalised Google
+  style (round-trip via `parseGoogleDocstring` → `renderGoogleDocstring`)
+- [x] `convertFileFormat(editor)` — applies convert to every docstring in the file
+- [x] All four commands registered in `extension.ts`
 
-### 3d — Integration tests
+### 3d — Integration tests ✅
 
-- [ ] `src/test/fixtures/update.input.py` — Python file with already-documented functions whose
-  signatures have since changed (added param, removed param, changed return type)
-- [ ] `src/test/fixtures/update.expected.py` — expected output after running `updateFile`
-- [ ] `src/test/integration/updateFile.test.ts` — fixture-driven test mirroring
-  `generateFile.test.ts` but calling the update transform
+- [x] `src/test/fixtures/update.input.py` — 7 documented functions with stale signatures
+  (added param, removed param, changed return type, `None` return suppression, one-liner
+  gaining a param, unknown section preservation, method inside class)
+- [x] `src/test/fixtures/update.expected.py` — generated from the pure transform
+- [x] `src/test/integration/updateFile.test.ts` — fixture-driven test; auto-discovers
+  `*.update-input.py` pairs and handles the plain `update.input.py` / `update.expected.py` pair
 
 ---
 
