@@ -5,6 +5,7 @@ import {
   parseParam,
   findSignatureFromLines,
   isModuleLevelLines,
+  isGeneratorFunction,
   buildGoogleDocstring,
   type Param,
   type ParsedSignature,
@@ -90,7 +91,7 @@ describe("parseParam", () => {
 
   it("*args", () => {
     assert.deepEqual(parseParam("*args"), {
-      name: "args",
+      name: "*args",
       annotation: null,
       hasDefault: false,
     });
@@ -98,7 +99,7 @@ describe("parseParam", () => {
 
   it("**kwargs", () => {
     assert.deepEqual(parseParam("**kwargs"), {
-      name: "kwargs",
+      name: "**kwargs",
       annotation: null,
       hasDefault: false,
     });
@@ -118,9 +119,9 @@ describe("parseParam", () => {
 // ---------------------------------------------------------------------------
 
 describe("findSignatureFromLines", () => {
-  // Helper: returns lines up to and including a def/class line, startLine = last index
+  // Helper: returns the ParsedSignature (unwrapped from the defLine tuple)
   function sig(lines: string[]): ParsedSignature | null {
-    return findSignatureFromLines(lines, lines.length - 1);
+    return findSignatureFromLines(lines, lines.length - 1)?.sig ?? null;
   }
 
   it("func_no_params — no params, no return", () => {
@@ -140,7 +141,7 @@ describe("findSignatureFromLines", () => {
     assert.equal(result.name, "func_with_params");
     assert.equal(result.returnAnnotation, "int");
     const names = result.params.map((p) => p.name);
-    assert.deepEqual(names, ["a", "b", "args", "kwargs"]);
+    assert.deepEqual(names, ["a", "b", "*args", "**kwargs"]);
     assert.equal(result.params[1].hasDefault, true);
   });
 
@@ -257,12 +258,100 @@ describe("findSignatureFromLines", () => {
       1, // blank line
     );
     assert.ok(result);
-    assert.equal(result.name, "foo");
+    assert.equal(result.sig.name, "foo");
   });
 
   it("returns null when no def/class found", () => {
     const result = findSignatureFromLines(["x = 1", "y = 2"], 1);
     assert.equal(result, null);
+  });
+
+  it("multi-line signature — basic", () => {
+    const result = sig(["def foo(", "    a: int,", "    b: str,", ") -> bool:"]);
+    assert.ok(result);
+    assert.equal(result.name, "foo");
+    assert.equal(result.returnAnnotation, "bool");
+    assert.deepEqual(
+      result.params.map((p) => p.name),
+      ["a", "b"],
+    );
+  });
+
+  it("multi-line signature — annotations and defaults", () => {
+    const result = sig([
+      "def complex(",
+      "    x: int,",
+      "    y: str = 'hello',",
+      "    z: list[int] | None = None,",
+      ") -> dict[str, int]:",
+    ]);
+    assert.ok(result);
+    assert.equal(result.returnAnnotation, "dict[str, int]");
+    assert.deepEqual(result.params, [
+      { name: "x", annotation: "int", hasDefault: false },
+      { name: "y", annotation: "str", hasDefault: true },
+      { name: "z", annotation: "list[int] | None", hasDefault: true },
+    ]);
+  });
+
+  it("multi-line async def", () => {
+    const result = sig([
+      "async def fetch(",
+      "    url: str,",
+      "    timeout: int = 30,",
+      ") -> bytes:",
+    ]);
+    assert.ok(result);
+    assert.equal(result.name, "fetch");
+    assert.equal(result.kind, "def");
+  });
+
+  it("findSignatureFromLines returns defLine for single-line", () => {
+    const result = findSignatureFromLines(["def foo(a: int) -> bool:"], 0);
+    assert.ok(result);
+    assert.equal(result.defLine, 0);
+  });
+
+  it("findSignatureFromLines returns defLine for multi-line", () => {
+    const lines = ["def foo(", "    a: int,", ") -> bool:"];
+    const result = findSignatureFromLines(lines, 2);
+    assert.ok(result);
+    assert.equal(result.defLine, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isGeneratorFunction
+// ---------------------------------------------------------------------------
+
+describe("isGeneratorFunction", () => {
+  it("returns false for empty body", () => {
+    assert.equal(isGeneratorFunction(["def foo():"], 0, 1), false);
+  });
+
+  it("returns false when no yield in body", () => {
+    const lines = ["def foo():", "    x = 1", "    return x"];
+    assert.equal(isGeneratorFunction(lines, 0, 1), false);
+  });
+
+  it("returns true when body contains yield", () => {
+    const lines = ["def gen(n):", "    for i in range(n):", "        yield i"];
+    assert.equal(isGeneratorFunction(lines, 0, 1), true);
+  });
+
+  it("stops scanning at next function at same indentation", () => {
+    const lines = ["def gen():", "    return 1", "def other():", "    yield 2"];
+    assert.equal(isGeneratorFunction(lines, 0, 1), false);
+  });
+
+  it("yield directly in body is detected", () => {
+    const lines = ["def outer():", "    yield 1"];
+    assert.equal(isGeneratorFunction(lines, 0, 1), true);
+  });
+
+  it("yield in method body (indented def)", () => {
+    const lines = ["    def gen(self):", "        yield self.x"];
+    assert.equal(isGeneratorFunction(lines, 0, 1), true);
   });
 });
 
@@ -436,5 +525,40 @@ describe("buildGoogleDocstring", () => {
       returnAnnotation: "tuple[int, str]",
     });
     assert.ok(out.includes("tuple[int, str]:"));
+  });
+
+  it("generator function uses Yields section", () => {
+    const out = buildGoogleDocstring(
+      { kind: "def", name: "f", params: [], returnAnnotation: "int" },
+      "    ",
+      '"""',
+      { isGenerator: true },
+    );
+    assert.ok(out.includes("Yields:"));
+    assert.ok(!out.includes("Returns:"));
+  });
+
+  it("non-generator uses Returns section by default", () => {
+    const out = buildGoogleDocstring(
+      { kind: "def", name: "f", params: [], returnAnnotation: "int" },
+      "    ",
+      '"""',
+    );
+    assert.ok(out.includes("Returns:"));
+    assert.ok(!out.includes("Yields:"));
+  });
+
+  it("*args and **kwargs render with prefix in Args section", () => {
+    const out = build({
+      kind: "def",
+      name: "f",
+      params: [
+        { name: "*args", annotation: null, hasDefault: false },
+        { name: "**kwargs", annotation: null, hasDefault: false },
+      ],
+      returnAnnotation: null,
+    });
+    assert.ok(out.includes("*args:"));
+    assert.ok(out.includes("**kwargs:"));
   });
 });

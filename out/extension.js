@@ -63,29 +63,69 @@ function splitParams(raw) {
   return result;
 }
 function parseParam(token) {
-  const strippedToken = token.replace(/^\*{1,2}/, "");
-  if (!strippedToken) return null;
-  const eqIdx = token.indexOf("=");
+  const starsMatch = token.match(/^(\*{1,2})/);
+  const stars = starsMatch ? starsMatch[1] : "";
+  const withoutLeadingStars = token.slice(stars.length);
+  if (!withoutLeadingStars.trim()) return null;
+  const eqIdx = withoutLeadingStars.indexOf("=");
   const hasDefault = eqIdx !== -1;
-  const beforeEq = hasDefault ? token.slice(0, eqIdx).trim() : token.trim();
-  const withoutStars = beforeEq.replace(/^\*{1,2}/, "");
-  const colonIdx = withoutStars.indexOf(":");
+  const beforeEq = hasDefault ? withoutLeadingStars.slice(0, eqIdx).trim() : withoutLeadingStars.trim();
+  const colonIdx = beforeEq.indexOf(":");
   if (colonIdx !== -1) {
     return {
-      name: withoutStars.slice(0, colonIdx).trim(),
-      annotation: withoutStars.slice(colonIdx + 1).trim(),
+      name: stars + beforeEq.slice(0, colonIdx).trim(),
+      annotation: beforeEq.slice(colonIdx + 1).trim(),
       hasDefault
     };
   }
-  return { name: withoutStars.trim(), annotation: null, hasDefault };
+  return { name: stars + beforeEq.trim(), annotation: null, hasDefault };
 }
-function findSignatureFromLines(lines, startLine) {
-  for (let i = startLine; i >= 0 && i >= startLine - 30; i--) {
+function buildSigFromMatch(match) {
+  const rawParams = match[3] ?? "";
+  const returnStr = match[4] ?? null;
+  const params = [];
+  for (const token of splitParams(rawParams)) {
+    const p = parseParam(token);
+    if (!p) continue;
+    if (p.name === "self" || p.name === "cls") continue;
+    params.push(p);
+  }
+  return { kind: "def", name: match[2], params, returnAnnotation: returnStr };
+}
+function assembleMultiLineSig(lines, closingLine, limit) {
+  let depth = 0;
+  const parts = [];
+  for (let i = closingLine; i >= limit; i--) {
     const text = lines[i];
-    const defMatch = DEF_RE.exec(text);
-    if (defMatch) {
-      const rawParams = defMatch[3] ?? "";
-      const returnStr = defMatch[4] ?? null;
+    parts.unshift(text.trim());
+    for (const ch of text) {
+      if (ch === ")" || ch === "]" || ch === "}") depth++;
+      else if (ch === "(" || ch === "[" || ch === "{") depth--;
+    }
+    if (depth <= 0 && /(?:async\s+)?def\s/.test(text)) {
+      const joined = parts.join(" ");
+      const parenStartIdx = joined.search(/(?:async\s+)?def\s+\w+\s*\(/);
+      if (parenStartIdx === -1) return null;
+      const parenStart = joined.indexOf("(", parenStartIdx);
+      let d = 0;
+      let closeIdx = -1;
+      for (let j = parenStart; j < joined.length; j++) {
+        if (joined[j] === "(") d++;
+        else if (joined[j] === ")") {
+          d--;
+          if (d === 0) {
+            closeIdx = j;
+            break;
+          }
+        }
+      }
+      if (closeIdx === -1) return null;
+      const rawParams = joined.slice(parenStart + 1, closeIdx);
+      const afterClose = joined.slice(closeIdx + 1).trim();
+      const returnMatch = /^->\s*(.+?)\s*:/.exec(afterClose);
+      const returnAnnotation = returnMatch ? returnMatch[1].trim() : null;
+      const nameMatch = /(?:async\s+)?def\s+(\w+)/.exec(joined);
+      if (!nameMatch) return null;
       const params = [];
       for (const token of splitParams(rawParams)) {
         const p = parseParam(token);
@@ -94,19 +134,36 @@ function findSignatureFromLines(lines, startLine) {
         params.push(p);
       }
       return {
-        kind: "def",
-        name: defMatch[2],
-        params,
-        returnAnnotation: returnStr
+        sig: { kind: "def", name: nameMatch[1], params, returnAnnotation },
+        defLine: i
       };
+    }
+    if (depth < 0) return null;
+  }
+  return null;
+}
+function findSignatureFromLines(lines, startLine) {
+  const limit = Math.max(0, startLine - 30);
+  for (let i = startLine; i >= limit; i--) {
+    const text = lines[i];
+    const trimmed = text.trim();
+    const defMatch = DEF_RE.exec(text);
+    if (defMatch) {
+      return { sig: buildSigFromMatch(defMatch), defLine: i };
     }
     const classMatch = CLASS_RE.exec(text);
     if (classMatch) {
-      return { kind: "class", name: classMatch[2], params: [], returnAnnotation: null };
+      return {
+        sig: { kind: "class", name: classMatch[2], params: [], returnAnnotation: null },
+        defLine: i
+      };
     }
-    if (text.trim() !== "" && !DECORATOR_RE.test(text)) {
-      break;
+    if (trimmed === "" || DECORATOR_RE.test(text)) continue;
+    if (trimmed.endsWith(":") && trimmed.includes(")")) {
+      const assembled = assembleMultiLineSig(lines, i, limit);
+      if (assembled) return assembled;
     }
+    break;
   }
   return null;
 }
@@ -118,7 +175,20 @@ function isModuleLevelLines(lines, startLine) {
   }
   return true;
 }
-function buildGoogleDocstring(sig, indent, quoteChar) {
+function isGeneratorFunction(lines, defLine, bodyStartLine) {
+  const defText = lines[defLine] ?? "";
+  const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1].length;
+  for (let i = bodyStartLine; i < lines.length && i < bodyStartLine + 200; i++) {
+    const text = lines[i];
+    const trimmed = text.trim();
+    if (!trimmed) continue;
+    const lineIndent = (text.match(/^(\s*)/) ?? ["", ""])[1].length;
+    if (lineIndent <= defIndent) break;
+    if (/\byield\b/.test(trimmed)) return true;
+  }
+  return false;
+}
+function buildGoogleDocstring(sig, indent, quoteChar, opts = {}) {
   const paramIndent = indent + "    ";
   let n = 1;
   let out = `\${${n++}:_summary_}`;
@@ -135,8 +205,9 @@ ${indent}Args:
   }
   const skipReturn = sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
   if (!skipReturn) {
+    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
     out += `
-${indent}Returns:
+${indent}${sectionLabel}:
 `;
     out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}
 `;
@@ -159,10 +230,11 @@ var DocstringTrigger = class {
     const indent = tripleQuoteMatch[1];
     const quoteChar = tripleQuoteMatch[2];
     const lines = docLines(document);
-    const sig = findSignatureFromLines(lines, position.line - 1);
+    const found = findSignatureFromLines(lines, position.line - 1);
     let snippetValue;
-    if (sig) {
-      snippetValue = buildGoogleDocstring(sig, indent, quoteChar);
+    if (found) {
+      const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
+      snippetValue = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
       snippetValue = `\${1:_summary_}
 ${indent}${quoteChar}`;
