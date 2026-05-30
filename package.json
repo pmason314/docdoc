@@ -1,7 +1,7 @@
 {
   "name": "python-docstring-generator",
   "displayName": "Python Docstring Generator",
-  "description": "Generate and update Python docstrings in Google, NumPy, or Sphinx format with optional AI assistance.",
+  "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format..",
   "version": "0.1.0",
   "publisher": "pmason314",
   "license": "MIT",
@@ -28,8 +28,7 @@
   "activationEvents": [
     "onLanguage:python"
   ],
-  "main": "./dist/extension.js",
-  "type": "module",
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
@@ -103,7 +102,7 @@
             "NumPy style",
             "Sphinx / reStructuredText style"
           ],
-          "description": "Docstring format. If empty, format is auto-detected from pyproject.toml; falls back to Google."
+          "description": "Docstring format. If empty, auto-detected from pyproject.toml; falls back to Google."
         },
         "docstringGenerator.quoteStyle": {
           "type": "string",
@@ -136,7 +135,7 @@
         "docstringGenerator.includeTypesFromAnnotations": {
           "type": "boolean",
           "default": true,
-          "description": "Include type info in the docstring when a type annotation is present in the signature. When false, type fields are omitted on generation and stripped from existing entries on update."
+          "description": "Include type info in the docstring when a type annotation is present in the signature."
         },
         "docstringGenerator.includeDefaults": {
           "type": "boolean",
@@ -156,7 +155,7 @@
         "docstringGenerator.returns.requireAnnotation": {
           "type": "boolean",
           "default": true,
-          "description": "Only emit a Returns section when a return annotation is present. When skipNone is also true, skipNone takes priority (a -> None annotation is always suppressed)."
+          "description": "Only emit a Returns section when a return annotation is present."
         },
         "docstringGenerator.detectGenerators": {
           "type": "boolean",
@@ -166,7 +165,7 @@
         "docstringGenerator.raises.useSubprocess": {
           "type": "boolean",
           "default": true,
-          "description": "Use the workspace Python interpreter for precise raises analysis. Falls back to simple scan if unavailable."
+          "description": "Use the workspace Python interpreter for precise raises analysis."
         },
         "docstringGenerator.raises.useSimpleScan": {
           "type": "boolean",
@@ -176,7 +175,7 @@
         "docstringGenerator.mergeInitParams": {
           "type": "boolean",
           "default": false,
-          "description": "Hoist __init__ parameters into the class-level docstring instead of documenting them on __init__."
+          "description": "Hoist __init__ parameters into the class-level docstring."
         },
         "docstringGenerator.includeClassAttributes": {
           "type": "boolean",
@@ -186,22 +185,22 @@
         "docstringGenerator.update.removeStaleParams": {
           "type": "boolean",
           "default": true,
-          "description": "Remove parameter entries from the docstring when the parameter no longer exists in the signature. When false, stale entries are left in place."
+          "description": "Remove parameter entries no longer present in the signature."
         },
         "docstringGenerator.placeholders.summary": {
           "type": "string",
           "default": "_summary_",
-          "description": "Placeholder text for the summary line when AI generation is disabled."
+          "description": "Placeholder text for the summary line."
         },
         "docstringGenerator.placeholders.description": {
           "type": "string",
-          "default": "",
-          "description": "Placeholder text for parameter and return descriptions. Empty string leaves the field blank."
+          "default": "_description_",
+          "description": "Placeholder text for parameter and return descriptions."
         },
         "docstringGenerator.pythonPath": {
           "type": "string",
           "default": "",
-          "description": "Explicit path to the Python interpreter for AST analysis. If empty, the extension uses the interpreter selected by the Python extension (ms-python.python)."
+          "description": "Explicit path to the Python interpreter. If empty, uses the interpreter selected by the Python extension."
         },
         "docstringGenerator.ai.generateSummary": {
           "type": "boolean",
@@ -238,20 +237,14 @@
     }
   },
   "scripts": {
-    "compile": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "package": "NODE_ENV=production node esbuild.mjs",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "NODE_ENV=production node esbuild.js",
     "vscode:prepublish": "npm run package",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "test:unit": "mocha",
-    "test:integration": "vscode-test",
-    "test": "npm run test:unit && npm run test:integration"
+    "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/mocha": "^10.0.10",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
@@ -259,28 +252,13 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.0",
     "@vscode/vsce": "^3.0.0",
-    "c8": "^10.0.0",
-    "chai": "^4.5.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
-    "eslint-config-prettier": "^10.0.0",
-    "husky": "^9.0.0",
-    "lint-staged": "^15.0.0",
-    "mocha": "^11.0.0",
-    "prettier": "^3.0.0",
-    "ts-node": "^10.9.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   },
   "dependencies": {
     "smol-toml": "^1.3.0",
     "tree-sitter-python": "^0.25.0",
     "web-tree-sitter": "^0.26.8"
-  },
-  "lint-staged": {
-    "src/**/*.ts": [
-      "eslint --fix",
-      "prettier --write"
-    ]
   }
 }

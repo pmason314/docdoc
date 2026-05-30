@@ -2,18 +2,23 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "type": "npm",
-      "script": "watch",
-      "problemMatcher": "$esbuild-watch",
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never"
+      "label": "compile",
+      "type": "shell",
+      "command": "source ~/.nvm/nvm.sh && node esbuild.js",
+      "options": {
+        "shell": {
+          "executable": "/usr/bin/zsh",
+          "args": ["-c"]
+        }
       },
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "label": "npm: watch"
+      "presentation": {
+        "reveal": "silent"
+      },
+      "problemMatcher": "$tsc"
     }
   ]
 }

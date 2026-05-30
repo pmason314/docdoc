@@ -1,28 +1,28 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "Node16",
-    "moduleResolution": "Node16",
+    "target": "ES2020",
+    "module": "preserve",
     "lib": [
-      "ES2022"
+      "ES2020"
     ],
-    "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
+    "outDir": "./out",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "bundler",
+    "types": [
+      "node"
+    ],
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*"
   ],
   "exclude": [
-    "src/test/**/*.ts",
     "node_modules",
-    "dist"
+    "out"
   ]
 }
