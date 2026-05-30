@@ -17,7 +17,7 @@ def func_with_params(a, b=2, *args, **kwargs) -> int:
 
     Args:
         a: _description_
-        b: _description_
+        b: _description_ Defaults to 2.
         *args: _description_
         **kwargs: _description_
 
@@ -72,7 +72,7 @@ def kw_only(a, *, b, c=3):
     Args:
         a: _description_
         b: _description_
-        c: _description_
+        c: _description_ Defaults to 3.
     """
     return a + b + c
 
@@ -124,7 +124,7 @@ class SimpleClass:
 
         Args:
             x: _description_
-            y: _description_
+            y: _description_ Defaults to 1.
         """
         self.x = x
         self.y = y

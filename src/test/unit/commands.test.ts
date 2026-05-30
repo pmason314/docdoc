@@ -135,6 +135,98 @@ describe("buildGoogleDocstringText", () => {
     assert.ok(out.startsWith("    '''"));
     assert.ok(out.endsWith("'''"));
   });
+
+  it("includeDefaults appends 'Defaults to X.' for params with a default value", () => {
+    const out = buildGoogleDocstringText(
+      {
+        kind: "def",
+        name: "f",
+        params: [{ name: "x", annotation: "int", hasDefault: true, defaultValue: "42" }],
+        returnAnnotation: null,
+      },
+      "    ",
+      '"""',
+      { includeDefaults: true },
+    );
+    assert.ok(out.includes("x (int): _description_ Defaults to 42.\n"));
+  });
+
+  it("includeDefaults=false omits 'Defaults to X.' even when defaultValue is present", () => {
+    const out = buildGoogleDocstringText(
+      {
+        kind: "def",
+        name: "f",
+        params: [{ name: "x", annotation: "int", hasDefault: true, defaultValue: "42" }],
+        returnAnnotation: null,
+      },
+      "    ",
+      '"""',
+      { includeDefaults: false },
+    );
+    assert.ok(!out.includes("Defaults to"));
+  });
+
+  it("returnsMode='always' emits Returns for unannotated function", () => {
+    const out = buildGoogleDocstringText(
+      { kind: "def", name: "f", params: [], returnAnnotation: null },
+      "    ",
+      '"""',
+      { returnsMode: "always" },
+    );
+    assert.ok(out.includes("Returns:"));
+    assert.ok(out.includes("_description_"));
+  });
+
+  it("returnsMode='non-none' emits Returns for unannotated, skips -> None", () => {
+    const outUnannotated = buildGoogleDocstringText(
+      { kind: "def", name: "f", params: [], returnAnnotation: null },
+      "    ",
+      '"""',
+      { returnsMode: "non-none" },
+    );
+    assert.ok(outUnannotated.includes("Returns:"));
+
+    const outNone = buildGoogleDocstringText(
+      { kind: "def", name: "f", params: [], returnAnnotation: "None" },
+      "    ",
+      '"""',
+      { returnsMode: "non-none" },
+    );
+    assert.ok(!outNone.includes("Returns:"));
+  });
+
+  it("includeTypes=false omits type hints from Args entries", () => {
+    const out = buildGoogleDocstringText(
+      {
+        kind: "def",
+        name: "f",
+        params: [{ name: "x", annotation: "int", hasDefault: false }],
+        returnAnnotation: null,
+      },
+      "    ",
+      '"""',
+      { includeTypes: false },
+    );
+    assert.ok(out.includes("        x: _description_\n"));
+    assert.ok(!out.includes("(int)"));
+  });
+
+  it("custom placeholders appear in output", () => {
+    const out = buildGoogleDocstringText(
+      {
+        kind: "def",
+        name: "f",
+        params: [{ name: "x", annotation: null, hasDefault: false }],
+        returnAnnotation: "str",
+      },
+      "    ",
+      '"""',
+      { summaryPlaceholder: "Summary here.", descPlaceholder: "TODO" },
+    );
+    assert.ok(out.includes("Summary here."));
+    assert.ok(out.includes("x: TODO\n"));
+    assert.ok(out.includes("str: TODO\n"));
+  });
 });
 
 // ---------------------------------------------------------------------------

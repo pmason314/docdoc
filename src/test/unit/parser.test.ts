@@ -78,6 +78,7 @@ describe("parseParam", () => {
       name: "b",
       annotation: "str",
       hasDefault: true,
+      defaultValue: "'x'",
     });
   });
 
@@ -86,6 +87,7 @@ describe("parseParam", () => {
       name: "b",
       annotation: null,
       hasDefault: true,
+      defaultValue: "2",
     });
   });
 
@@ -214,7 +216,7 @@ describe("findSignatureFromLines", () => {
     assert.ok(result);
     assert.deepEqual(result.params, [
       { name: "x", annotation: null, hasDefault: false },
-      { name: "y", annotation: null, hasDefault: true },
+      { name: "y", annotation: null, hasDefault: true, defaultValue: "1" },
     ]);
   });
 
@@ -289,8 +291,8 @@ describe("findSignatureFromLines", () => {
     assert.equal(result.returnAnnotation, "dict[str, int]");
     assert.deepEqual(result.params, [
       { name: "x", annotation: "int", hasDefault: false },
-      { name: "y", annotation: "str", hasDefault: true },
-      { name: "z", annotation: "list[int] | None", hasDefault: true },
+      { name: "y", annotation: "str", hasDefault: true, defaultValue: "'hello'" },
+      { name: "z", annotation: "list[int] | None", hasDefault: true, defaultValue: "None" },
     ]);
   });
 
@@ -492,7 +494,7 @@ describe("buildGoogleDocstring", () => {
     assert.ok(!out.includes("Returns:"));
   });
 
-  it("section headers use the caller-supplied indent", () => {
+  it("section headers use relative (0-based) indentation for VS Code inline-completion", () => {
     const out = buildGoogleDocstring(
       {
         kind: "def",
@@ -503,11 +505,13 @@ describe("buildGoogleDocstring", () => {
       "    ",
       '"""',
     );
-    // Args: and Returns: should be at the same indent level as the opening """
-    assert.ok(out.includes("    Args:"));
-    assert.ok(out.includes("    Returns:"));
-    // Param lines should be indented one level deeper
-    assert.ok(out.includes("        a:"));
+    // Section headers must have NO leading indent: VS Code adds the trigger
+    // line's indentation when normalising inline-completion snippets.
+    assert.ok(out.includes("\nArgs:\n"));
+    assert.ok(out.includes("\nReturns:\n"));
+    // Param lines carry one level of relative indent (4 spaces).
+    assert.ok(out.includes("    a:"));
+    assert.ok(!out.includes("        a:"));
   });
 
   it("complex return annotation preserved verbatim", () => {

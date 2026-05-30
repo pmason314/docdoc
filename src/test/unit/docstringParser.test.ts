@@ -346,7 +346,9 @@ describe("mergeDocstring", () => {
   const Q = '"""';
 
   /** Build a minimal parsed docstring for testing. */
-  function existingDoc(overrides: Partial<ReturnType<typeof parseGoogleDocstring>["parsed"]>) {
+  function existingDoc(
+    overrides: Partial<NonNullable<ReturnType<typeof parseGoogleDocstring>>["parsed"]>,
+  ) {
     return {
       summary: "Original summary.",
       extendedSummary: "",

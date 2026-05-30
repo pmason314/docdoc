@@ -34,15 +34,184 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode4 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 
 // src/codeAction.ts
 var vscode = __toESM(require("vscode"));
+
+// src/docstringParser.ts
+function firstColonOutsideBrackets(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    else if (ch === ":" && depth === 0) return i;
+  }
+  return -1;
+}
+function parseEntryLine(trimmed) {
+  const withParen = /^(\*{0,2}[\w]+)\s+\(([^)]+)\)\s*:\s*(.*)$/.exec(trimmed);
+  if (withParen) {
+    return { name: withParen[1], typehint: withParen[2], description: withParen[3] };
+  }
+  const colonIdx = firstColonOutsideBrackets(trimmed);
+  if (colonIdx !== -1) {
+    return {
+      name: trimmed.slice(0, colonIdx).trim(),
+      typehint: null,
+      description: trimmed.slice(colonIdx + 1).trim()
+    };
+  }
+  return { name: trimmed, typehint: null, description: "" };
+}
+function parseSectionEntries(sectionLines, entryIndent) {
+  const results = [];
+  let current = null;
+  for (const raw of sectionLines) {
+    const line = raw.trimEnd();
+    if (line.trim() === "") continue;
+    const leadingWS = line.length - line.trimStart().length;
+    if (leadingWS <= entryIndent.length) {
+      if (current) results.push(current);
+      current = parseEntryLine(line.trimStart());
+    } else if (current !== null) {
+      const cont = line.trimStart();
+      current.description = current.description ? `${current.description}
+${cont}` : cont;
+    }
+  }
+  if (current) results.push(current);
+  return results;
+}
+function emptyDocstring(summary) {
+  return {
+    summary,
+    extendedSummary: "",
+    params: [],
+    returns: null,
+    yields: null,
+    raises: [],
+    unknownSections: []
+  };
+}
+function parseGoogleDocstring(lines, openingLine) {
+  const line0 = lines[openingLine];
+  const openMatch = /^(\s*)("""|''')(.*)$/.exec(line0);
+  if (!openMatch) return null;
+  const [, indent, quoteChar, restRaw] = openMatch;
+  const rest = restRaw.trimEnd();
+  const entryIndent = indent + "    ";
+  if (rest.endsWith(quoteChar)) {
+    const summary2 = rest.slice(0, -quoteChar.length).trim();
+    return {
+      startLine: openingLine,
+      endLine: openingLine,
+      indent,
+      quoteChar,
+      parsed: emptyDocstring(summary2)
+    };
+  }
+  let endLine = -1;
+  for (let i = openingLine + 1; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith(quoteChar)) {
+      endLine = i;
+      break;
+    }
+  }
+  if (endLine === -1) return null;
+  let summary = rest.trim();
+  let bodyStart = openingLine + 1;
+  if (!summary) {
+    while (bodyStart < endLine && lines[bodyStart].trim() === "") bodyStart++;
+    if (bodyStart < endLine) {
+      summary = lines[bodyStart].trim();
+      bodyStart++;
+    }
+  }
+  const rawSections = [];
+  const extendedLines = [];
+  let currentSection = null;
+  for (let i = bodyStart; i < endLine; i++) {
+    const raw = lines[i];
+    const line = raw.trimEnd();
+    if (line.trim() === "") {
+      if (currentSection) currentSection.lines.push("");
+      else extendedLines.push("");
+      continue;
+    }
+    const leadingWS = line.length - line.trimStart().length;
+    const content = line.trimStart();
+    if (leadingWS === indent.length && content.endsWith(":")) {
+      currentSection = { header: content.slice(0, -1), lines: [] };
+      rawSections.push(currentSection);
+    } else if (currentSection) {
+      currentSection.lines.push(raw);
+    } else {
+      extendedLines.push(line);
+    }
+  }
+  const parsed = {
+    ...emptyDocstring(summary),
+    extendedSummary: extendedLines.join("\n").replace(/^\n+|\n+$/g, "")
+  };
+  for (const section of rawSections) {
+    const entries = parseSectionEntries(section.lines, entryIndent);
+    switch (section.header) {
+      case "Args":
+      case "Arguments":
+      case "Parameters":
+        parsed.params = entries.map((e) => ({
+          name: e.name,
+          typehint: e.typehint,
+          description: e.description
+        }));
+        break;
+      case "Returns":
+      case "Return":
+        if (entries.length > 0) {
+          parsed.returns = {
+            typehint: entries[0].typehint ?? entries[0].name,
+            description: entries[0].description
+          };
+        }
+        break;
+      case "Yields":
+      case "Yield":
+        if (entries.length > 0) {
+          parsed.yields = {
+            typehint: entries[0].typehint ?? entries[0].name,
+            description: entries[0].description
+          };
+        }
+        break;
+      case "Raises":
+        parsed.raises = entries.map((e) => ({
+          exception: e.name,
+          description: e.description
+        }));
+        break;
+      default:
+        parsed.unknownSections.push({ header: section.header, lines: section.lines });
+        break;
+    }
+  }
+  return { startLine: openingLine, endLine, indent, quoteChar, parsed };
+}
 
 // src/parser.ts
 var DEF_RE = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*(.+?)\s*)?:\s*$/;
 var CLASS_RE = /^(\s*)class\s+(\w+)/;
 var DECORATOR_RE = /^\s*@/;
+var DEFAULT_OPTIONS = {
+  quoteChar: '"""',
+  includeTypes: true,
+  includeDefaults: true,
+  returnsMode: "when-annotated",
+  summaryPlaceholder: "_summary_",
+  descPlaceholder: "_description_",
+  generateModuleDocstring: false
+};
 function splitParams(raw) {
   const result = [];
   let depth = 0;
@@ -67,18 +236,35 @@ function parseParam(token) {
   const stars = starsMatch ? starsMatch[1] : "";
   const withoutLeadingStars = token.slice(stars.length);
   if (!withoutLeadingStars.trim()) return null;
-  const eqIdx = withoutLeadingStars.indexOf("=");
+  let eqIdx = -1;
+  {
+    let d = 0;
+    for (let i = 0; i < withoutLeadingStars.length; i++) {
+      const c = withoutLeadingStars[i];
+      if (c === "(" || c === "[" || c === "{") d++;
+      else if (c === ")" || c === "]" || c === "}") d--;
+      else if (c === "=" && d === 0) {
+        eqIdx = i;
+        break;
+      }
+    }
+  }
   const hasDefault = eqIdx !== -1;
+  const defaultValue = hasDefault ? withoutLeadingStars.slice(eqIdx + 1).trim() : void 0;
   const beforeEq = hasDefault ? withoutLeadingStars.slice(0, eqIdx).trim() : withoutLeadingStars.trim();
   const colonIdx = beforeEq.indexOf(":");
   if (colonIdx !== -1) {
-    return {
+    const p2 = {
       name: stars + beforeEq.slice(0, colonIdx).trim(),
       annotation: beforeEq.slice(colonIdx + 1).trim(),
       hasDefault
     };
+    if (defaultValue !== void 0) p2.defaultValue = defaultValue;
+    return p2;
   }
-  return { name: stars + beforeEq.trim(), annotation: null, hasDefault };
+  const p = { name: stars + beforeEq.trim(), annotation: null, hasDefault };
+  if (defaultValue !== void 0) p.defaultValue = defaultValue;
+  return p;
 }
 function buildSigFromMatch(match) {
   const rawParams = match[3] ?? "";
@@ -188,54 +374,84 @@ function isGeneratorFunction(lines, defLine, bodyStartLine) {
   }
   return false;
 }
-function buildGoogleDocstring(sig, indent, quoteChar, opts = {}) {
-  const paramIndent = indent + "    ";
+function shouldSkipReturn(sig, mode) {
+  if (sig.kind !== "def") return true;
+  switch (mode) {
+    case "always":
+      return false;
+    case "non-none":
+      return sig.returnAnnotation === "None";
+    case "when-annotated":
+    default:
+      return sig.returnAnnotation === null || sig.returnAnnotation === "None";
+  }
+}
+function buildGoogleDocstring(sig, _indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
+  const paramIndent = "    ";
   let n = 1;
-  let out = `\${${n++}:_summary_}`;
+  let out = `\${${n++}:${summaryPlaceholder}}`;
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `
 
-${indent}Args:
+Args:
 `;
     for (const p of sig.params) {
-      const typeHint = p.annotation ? ` (${p.annotation})` : "";
-      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:_description_}
+      const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${defaultsNote}
 `;
     }
   }
-  const skipReturn = sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
-  if (!skipReturn) {
-    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
-    out += `
-${indent}${sectionLabel}:
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${sectionLabel}:
 `;
-    out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}
+    const typePrefix = sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
+    out += `${paramIndent}${typePrefix}\${${n++}:${descPlaceholder}}
 `;
   }
-  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
-  return out;
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
 }
 function buildGoogleDocstringText(sig, indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
   const paramIndent = indent + "    ";
-  let out = `${indent}${quoteChar}_summary_`;
+  let out = `${indent}${quoteChar}${summaryPlaceholder}`;
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `
 
 ${indent}Args:
 `;
     for (const p of sig.params) {
-      const typeHint = p.annotation ? ` (${p.annotation})` : "";
-      out += `${paramIndent}${p.name}${typeHint}: _description_
+      const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${defaultsNote}
 `;
     }
   }
-  const skipReturn = sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
-  if (!skipReturn) {
-    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
-    out += `
-${indent}${sectionLabel}:
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}${sectionLabel}:
 `;
-    out += `${paramIndent}${sig.returnAnnotation}: _description_
+    const typePrefix = sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
+    out += `${paramIndent}${typePrefix}${descPlaceholder}
 `;
   }
   out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
@@ -249,8 +465,23 @@ function hasDocstring(lines, defLine) {
   }
   return false;
 }
-function generateFileInsertions(lines, quoteChar = '"""') {
+function generateFileInsertions(lines, opts = {}) {
   const insertions = [];
+  const quoteChar = opts.quoteChar ?? DEFAULT_OPTIONS.quoteChar;
+  const summaryPh = opts.summaryPlaceholder ?? DEFAULT_OPTIONS.summaryPlaceholder;
+  if (opts.generateModuleDocstring) {
+    const hasModuleDoc = (() => {
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        return t.startsWith('"""') || t.startsWith("'''");
+      }
+      return false;
+    })();
+    if (!hasModuleDoc) {
+      insertions.push({ afterLine: -1, text: `${quoteChar}${summaryPh}${quoteChar}` });
+    }
+  }
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i];
     const isDefOrClass = DEF_RE.test(text) || CLASS_RE.test(text);
@@ -278,10 +509,141 @@ function generateFileInsertions(lines, quoteChar = '"""') {
     const defIndent = (text.match(/^(\s*)/) ?? ["", ""])[1];
     const bodyIndent = defIndent + "    ";
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
-    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, { isGenerator });
+    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, {
+      isGenerator,
+      ...opts
+    });
     insertions.push({ afterLine: sigEndLine, text: docText });
   }
   return insertions;
+}
+function mergeDocstring(sig, existing, opts = {}) {
+  const {
+    isGenerator = false,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder
+  } = opts;
+  const existingByName = new Map(existing.params.map((p) => [p.name, p]));
+  const newParams = sig.params.map((p) => {
+    const found = existingByName.get(p.name);
+    return {
+      name: p.name,
+      typehint: p.annotation ?? null,
+      description: found?.description ?? descPlaceholder
+    };
+  });
+  const skipReturn = shouldSkipReturn(sig, returnsMode);
+  let newReturns = null;
+  let newYields = null;
+  if (!skipReturn) {
+    const existingDesc = (isGenerator ? existing.yields?.description : existing.returns?.description) ?? existing.returns?.description ?? existing.yields?.description ?? descPlaceholder;
+    if (isGenerator) {
+      newYields = { typehint: sig.returnAnnotation, description: existingDesc };
+    } else {
+      newReturns = { typehint: sig.returnAnnotation, description: existingDesc };
+    }
+  }
+  return {
+    summary: existing.summary,
+    extendedSummary: existing.extendedSummary,
+    params: newParams,
+    returns: newReturns,
+    yields: newYields,
+    raises: existing.raises,
+    unknownSections: existing.unknownSections
+  };
+}
+function renderGoogleDocstring(parsed, indent, quoteChar) {
+  const paramIndent = indent + "    ";
+  const contIndent = paramIndent + "    ";
+  function renderDesc(firstPrefix, desc) {
+    const lines = desc.split("\n");
+    let s = `${firstPrefix}${lines[0]}
+`;
+    for (let i = 1; i < lines.length; i++) s += `${contIndent}${lines[i]}
+`;
+    return s;
+  }
+  const hasContent = parsed.params.length > 0 || parsed.returns !== null || parsed.yields !== null || parsed.raises.length > 0 || parsed.unknownSections.length > 0 || parsed.extendedSummary !== "";
+  if (!hasContent) {
+    return `${indent}${quoteChar}${parsed.summary}${quoteChar}`;
+  }
+  let out = `${indent}${quoteChar}${parsed.summary}
+`;
+  if (parsed.extendedSummary) {
+    out += `
+${parsed.extendedSummary}
+`;
+  }
+  if (parsed.params.length > 0) {
+    out += `
+${indent}Args:
+`;
+    for (const p of parsed.params) {
+      const typeHint = p.typehint ? ` (${p.typehint})` : "";
+      out += renderDesc(`${paramIndent}${p.name}${typeHint}: `, p.description);
+    }
+  }
+  const returnsEntry = parsed.yields ?? parsed.returns;
+  if (returnsEntry) {
+    const label = parsed.yields !== null ? "Yields" : "Returns";
+    out += `
+${indent}${label}:
+`;
+    const typePrefix = returnsEntry.typehint ? `${returnsEntry.typehint}: ` : "";
+    out += renderDesc(`${paramIndent}${typePrefix}`, returnsEntry.description);
+  }
+  if (parsed.raises.length > 0) {
+    out += `
+${indent}Raises:
+`;
+    for (const r of parsed.raises) {
+      out += renderDesc(`${paramIndent}${r.exception}: `, r.description);
+    }
+  }
+  for (const section of parsed.unknownSections) {
+    out += `
+${indent}${section.header}:
+`;
+    for (const l of section.lines) out += `${l}
+`;
+  }
+  out += `${indent}${quoteChar}`;
+  return out;
+}
+function buildUpdateText(lines, defLine, opts = {}) {
+  const found = findSignatureFromLines(lines, defLine);
+  if (!found) return null;
+  let sigEndLine = defLine;
+  if (!lines[defLine].trimEnd().endsWith(":")) {
+    let depth = 0;
+    for (const ch of lines[defLine]) {
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+    }
+    let j = defLine + 1;
+    while (j < lines.length && depth > 0) {
+      for (const ch of lines[j]) {
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      j++;
+    }
+    sigEndLine = j - 1;
+  }
+  let docOpenLine = -1;
+  for (let i = sigEndLine + 1; i < Math.min(lines.length, sigEndLine + 6); i++) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "") continue;
+    if (trimmed.startsWith('"""') || trimmed.startsWith("'''")) docOpenLine = i;
+    break;
+  }
+  if (docOpenLine === -1) return null;
+  const parseResult = parseGoogleDocstring(lines, docOpenLine);
+  if (!parseResult) return null;
+  const merged = mergeDocstring(found.sig, parseResult.parsed, opts);
+  const text = renderGoogleDocstring(merged, parseResult.indent, parseResult.quoteChar);
+  return { text, startLine: parseResult.startLine, endLine: parseResult.endLine };
 }
 
 // src/codeAction.ts
@@ -330,6 +692,7 @@ async function generate(editor) {
   const document = editor.document;
   const cursorLine = editor.selection.active.line;
   const lines = docLines(document);
+  const opts = (void 0)(document.uri);
   const found = findSignatureFromLines(lines, cursorLine);
   if (!found) {
     vscode2.window.showInformationMessage("No function or class found at cursor.");
@@ -361,14 +724,18 @@ async function generate(editor) {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
-  const docText = buildGoogleDocstringText(sig, bodyIndent, '"""', { isGenerator });
+  const docText = buildGoogleDocstringText(sig, bodyIndent, opts.quoteChar, {
+    isGenerator,
+    ...opts
+  });
   const edit = insertionEdit(document, sigEndLine, docText);
   await vscode2.workspace.applyEdit(edit);
 }
 async function generateFile(editor) {
   const document = editor.document;
   const lines = docLines(document);
-  const insertions = generateFileInsertions(lines);
+  const opts = (void 0)(document.uri);
+  const insertions = generateFileInsertions(lines, opts);
   if (insertions.length === 0) {
     vscode2.window.showInformationMessage("All functions already have docstrings.");
     return;
@@ -380,9 +747,150 @@ async function generateFile(editor) {
   }
   await vscode2.workspace.applyEdit(edit);
 }
+async function update(editor) {
+  const document = editor.document;
+  const cursorLine = editor.selection.active.line;
+  const lines = docLines(document);
+  const opts = (void 0)(document.uri);
+  const found = findSignatureFromLines(lines, cursorLine);
+  if (!found) {
+    vscode2.window.showInformationMessage("No function or class found at cursor.");
+    return;
+  }
+  const isGenerator = isGeneratorFunction(lines, found.defLine, found.defLine + 1);
+  const result = buildUpdateText(lines, found.defLine, {
+    isGenerator,
+    returnsMode: opts.returnsMode,
+    descPlaceholder: opts.descPlaceholder
+  });
+  if (!result) {
+    vscode2.window.showInformationMessage("No docstring found to update.");
+    return;
+  }
+  const edit = new vscode2.WorkspaceEdit();
+  const range = new vscode2.Range(
+    new vscode2.Position(result.startLine, 0),
+    new vscode2.Position(result.endLine, document.lineAt(result.endLine).text.length)
+  );
+  edit.replace(document.uri, range, result.text);
+  await vscode2.workspace.applyEdit(edit);
+}
+async function updateFile(editor) {
+  const document = editor.document;
+  const lines = docLines(document);
+  const opts = (void 0)(document.uri);
+  const edit = new vscode2.WorkspaceEdit();
+  let count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const found = findSignatureFromLines(lines, i);
+    if (!found || found.defLine !== i) continue;
+    const isGenerator = isGeneratorFunction(lines, found.defLine, found.defLine + 1);
+    const result = buildUpdateText(lines, i, {
+      isGenerator,
+      returnsMode: opts.returnsMode,
+      descPlaceholder: opts.descPlaceholder
+    });
+    if (!result) continue;
+    const range = new vscode2.Range(
+      new vscode2.Position(result.startLine, 0),
+      new vscode2.Position(result.endLine, document.lineAt(result.endLine).text.length)
+    );
+    edit.replace(document.uri, range, result.text);
+    count++;
+  }
+  if (count === 0) {
+    vscode2.window.showInformationMessage("No documented functions found to update.");
+    return;
+  }
+  await vscode2.workspace.applyEdit(edit);
+}
+async function convert(editor) {
+  const document = editor.document;
+  const cursorLine = editor.selection.active.line;
+  const lines = docLines(document);
+  let docOpenLine = -1;
+  for (let i = cursorLine; i >= Math.max(0, cursorLine - 10); i--) {
+    const t = lines[i].trim();
+    if (t.startsWith('"""') || t.startsWith("'''")) {
+      docOpenLine = i;
+      break;
+    }
+  }
+  if (docOpenLine === -1) {
+    vscode2.window.showInformationMessage("No docstring found at cursor.");
+    return;
+  }
+  const parseResult = parseGoogleDocstring(lines, docOpenLine);
+  if (!parseResult) {
+    vscode2.window.showInformationMessage("Could not parse docstring.");
+    return;
+  }
+  const rendered = renderGoogleDocstring(
+    parseResult.parsed,
+    parseResult.indent,
+    parseResult.quoteChar
+  );
+  const edit = new vscode2.WorkspaceEdit();
+  const range = new vscode2.Range(
+    new vscode2.Position(parseResult.startLine, 0),
+    new vscode2.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
+  );
+  edit.replace(document.uri, range, rendered);
+  await vscode2.workspace.applyEdit(edit);
+}
+async function convertFileFormat(editor) {
+  const document = editor.document;
+  const lines = docLines(document);
+  const edit = new vscode2.WorkspaceEdit();
+  let count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t.startsWith('"""') && !t.startsWith("'''")) continue;
+    const parseResult = parseGoogleDocstring(lines, i);
+    if (!parseResult) continue;
+    const rendered = renderGoogleDocstring(
+      parseResult.parsed,
+      parseResult.indent,
+      parseResult.quoteChar
+    );
+    const range = new vscode2.Range(
+      new vscode2.Position(parseResult.startLine, 0),
+      new vscode2.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
+    );
+    edit.replace(document.uri, range, rendered);
+    i = parseResult.endLine;
+    count++;
+  }
+  if (count === 0) {
+    vscode2.window.showInformationMessage("No docstrings found in file.");
+    return;
+  }
+  await vscode2.workspace.applyEdit(edit);
+}
+
+// src/onSave.ts
+var vscode3 = __toESM(require("vscode"));
+function registerOnSaveHandler(context) {
+  context.subscriptions.push(
+    vscode3.workspace.onDidSaveTextDocument(async (document) => {
+      if (document.languageId !== "python") return;
+      const enabled = vscode3.workspace.getConfiguration("docstringGenerator").get("onSave.enable", false);
+      if (!enabled) return;
+      const lines = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
+      const insertions = generateFileInsertions(lines);
+      if (insertions.length === 0) return;
+      const edit = new vscode3.WorkspaceEdit();
+      for (const ins of insertions) {
+        const insertPos = new vscode3.Position(ins.afterLine + 1, 0);
+        edit.insert(document.uri, insertPos, ins.text + "\n");
+      }
+      await vscode3.workspace.applyEdit(edit);
+    })
+  );
+}
 
 // src/trigger.ts
-var vscode3 = __toESM(require("vscode"));
+var vscode4 = __toESM(require("vscode"));
 function docLines2(document) {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
 }
@@ -397,36 +905,47 @@ var DocstringTrigger = class {
     const quoteChar = tripleQuoteMatch[2];
     const lines = docLines2(document);
     const found = findSignatureFromLines(lines, position.line - 1);
-    let snippetValue;
+    let snippetBody;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetValue = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
+      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetValue = `\${1:_summary_}
+      snippetBody = `\${1:_summary_}
 ${indent}${quoteChar}`;
     } else {
       return [];
     }
-    const range = new vscode3.Range(position, position.with(void 0, lineText.length));
-    return [new vscode3.InlineCompletionItem(new vscode3.SnippetString(snippetValue), range)];
+    const bodyLines = snippetBody.split("\n");
+    const fullSnippet = indent + quoteChar + bodyLines[0] + "\n" + bodyLines.slice(1).map((l) => l === "" ? "" : indent + l).join("\n");
+    const lineStart = new vscode4.Position(position.line, 0);
+    const range = new vscode4.Range(lineStart, position.with(void 0, lineText.length));
+    return [new vscode4.InlineCompletionItem(new vscode4.SnippetString(fullSnippet), range)];
   }
 };
 
 // src/extension.ts
 function activate(context) {
   context.subscriptions.push(
-    vscode4.languages.registerInlineCompletionItemProvider(
+    vscode5.languages.registerInlineCompletionItemProvider(
       { language: "python" },
       new DocstringTrigger()
     ),
-    vscode4.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
-    vscode4.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
-    vscode4.languages.registerCodeActionsProvider(
+    vscode5.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
+    vscode5.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
+    vscode5.commands.registerTextEditorCommand("docstringGenerator.update", update),
+    vscode5.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
+    vscode5.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
+    vscode5.commands.registerTextEditorCommand(
+      "docstringGenerator.convertFileFormat",
+      convertFileFormat
+    ),
+    vscode5.languages.registerCodeActionsProvider(
       { language: "python" },
       new GenerateDocstringActionProvider(),
       { providedCodeActionKinds: GenerateDocstringActionProvider.providedKinds }
     )
   );
+  registerOnSaveHandler(context);
 }
 function deactivate() {
 }

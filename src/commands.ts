@@ -10,6 +10,7 @@ import {
   renderGoogleDocstring,
 } from "./parser";
 import { parseGoogleDocstring } from "./docstringParser";
+import { readConfig } from "./config";
 
 function docLines(document: vscode.TextDocument): string[] {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
@@ -35,6 +36,7 @@ export async function generate(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document;
   const cursorLine = editor.selection.active.line;
   const lines = docLines(document);
+  const opts = readConfig(document.uri);
 
   const found = findSignatureFromLines(lines, cursorLine);
   if (!found) {
@@ -72,7 +74,10 @@ export async function generate(editor: vscode.TextEditor): Promise<void> {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
-  const docText = buildGoogleDocstringText(sig, bodyIndent, '"""', { isGenerator });
+  const docText = buildGoogleDocstringText(sig, bodyIndent, opts.quoteChar, {
+    isGenerator,
+    ...opts,
+  });
 
   const edit = insertionEdit(document, sigEndLine, docText);
   await vscode.workspace.applyEdit(edit);
@@ -85,7 +90,8 @@ export async function generate(editor: vscode.TextEditor): Promise<void> {
 export async function generateFile(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document;
   const lines = docLines(document);
-  const insertions = generateFileInsertions(lines);
+  const opts = readConfig(document.uri);
+  const insertions = generateFileInsertions(lines, opts);
 
   if (insertions.length === 0) {
     vscode.window.showInformationMessage("All functions already have docstrings.");
@@ -108,6 +114,7 @@ export async function update(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document;
   const cursorLine = editor.selection.active.line;
   const lines = docLines(document);
+  const opts = readConfig(document.uri);
 
   const found = findSignatureFromLines(lines, cursorLine);
   if (!found) {
@@ -116,7 +123,11 @@ export async function update(editor: vscode.TextEditor): Promise<void> {
   }
 
   const isGenerator = isGeneratorFunction(lines, found.defLine, found.defLine + 1);
-  const result = buildUpdateText(lines, found.defLine, { isGenerator });
+  const result = buildUpdateText(lines, found.defLine, {
+    isGenerator,
+    returnsMode: opts.returnsMode,
+    descPlaceholder: opts.descPlaceholder,
+  });
 
   if (!result) {
     vscode.window.showInformationMessage("No docstring found to update.");
@@ -139,6 +150,7 @@ export async function update(editor: vscode.TextEditor): Promise<void> {
 export async function updateFile(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document;
   const lines = docLines(document);
+  const opts = readConfig(document.uri);
   const edit = new vscode.WorkspaceEdit();
   let count = 0;
 
@@ -147,7 +159,11 @@ export async function updateFile(editor: vscode.TextEditor): Promise<void> {
     if (!found || found.defLine !== i) continue;
 
     const isGenerator = isGeneratorFunction(lines, found.defLine, found.defLine + 1);
-    const result = buildUpdateText(lines, i, { isGenerator });
+    const result = buildUpdateText(lines, i, {
+      isGenerator,
+      returnsMode: opts.returnsMode,
+      descPlaceholder: opts.descPlaceholder,
+    });
     if (!result) continue;
 
     const range = new vscode.Range(

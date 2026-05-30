@@ -33,17 +33,32 @@ export class DocstringTrigger implements vscode.InlineCompletionItemProvider {
     const lines = docLines(document);
     const found = findSignatureFromLines(lines, position.line - 1);
 
-    let snippetValue: string;
+    let snippetBody: string;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetValue = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
+      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetValue = `\${1:_summary_}\n${indent}${quoteChar}`;
+      snippetBody = `\${1:_summary_}\n${indent}${quoteChar}`;
     } else {
       return [];
     }
 
-    const range = new vscode.Range(position, position.with(undefined, lineText.length));
-    return [new vscode.InlineCompletionItem(new vscode.SnippetString(snippetValue), range)];
+    // Build the full snippet with explicit indentation on every line.
+    // We replace the entire trigger line so that neither ghost-text preview
+    // nor snippet acceptance need to apply indentation normalization.
+    const bodyLines = snippetBody.split("\n");
+    const fullSnippet =
+      indent +
+      quoteChar +
+      bodyLines[0] +
+      "\n" +
+      bodyLines
+        .slice(1)
+        .map((l) => (l === "" ? "" : indent + l))
+        .join("\n");
+
+    const lineStart = new vscode.Position(position.line, 0);
+    const range = new vscode.Range(lineStart, position.with(undefined, lineText.length));
+    return [new vscode.InlineCompletionItem(new vscode.SnippetString(fullSnippet), range)];
   }
 }

@@ -8,10 +8,45 @@ export const CLASS_RE = /^(\s*)class\s+(\w+)/;
 // Matches a decorator line
 export const DECORATOR_RE = /^\s*@/;
 
+// ---------------------------------------------------------------------------
+// Config types (pure, no vscode dependency)
+// ---------------------------------------------------------------------------
+
+export type ReturnMode = "when-annotated" | "non-none" | "always";
+
+export interface DocstringOptions {
+  /** `'"""'` or `"'''"` derived from quoteStyle config. */
+  quoteChar: string;
+  /** Include `(type)` in Args entries when annotation is present. */
+  includeTypes: boolean;
+  /** Append `Defaults to X.` in param descriptions when a default is present. */
+  includeDefaults: boolean;
+  /** When to emit a Returns / Yields section. */
+  returnsMode: ReturnMode;
+  /** Placeholder for the one-line summary. */
+  summaryPlaceholder: string;
+  /** Placeholder for parameter / return descriptions. */
+  descPlaceholder: string;
+  /** Insert a module-level docstring if the file doesn't already have one. */
+  generateModuleDocstring: boolean;
+}
+
+export const DEFAULT_OPTIONS: DocstringOptions = {
+  quoteChar: '"""',
+  includeTypes: true,
+  includeDefaults: true,
+  returnsMode: "when-annotated",
+  summaryPlaceholder: "_summary_",
+  descPlaceholder: "_description_",
+  generateModuleDocstring: false,
+};
+
 export interface Param {
   name: string;
   annotation: string | null;
   hasDefault: boolean;
+  /** Raw default-value text (e.g. `"2"`, `"'hello'"`, `"None"`). Only present when `hasDefault` is true. */
+  defaultValue?: string;
 }
 
 export interface ParsedSignature {
@@ -57,21 +92,39 @@ export function parseParam(token: string): Param | null {
 
   if (!withoutLeadingStars.trim()) return null; // bare * separator
 
-  const eqIdx = withoutLeadingStars.indexOf("=");
+  // Find the first `=` at bracket depth 0 — separates param from default value.
+  let eqIdx = -1;
+  {
+    let d = 0;
+    for (let i = 0; i < withoutLeadingStars.length; i++) {
+      const c = withoutLeadingStars[i];
+      if (c === "(" || c === "[" || c === "{") d++;
+      else if (c === ")" || c === "]" || c === "}") d--;
+      else if (c === "=" && d === 0) {
+        eqIdx = i;
+        break;
+      }
+    }
+  }
   const hasDefault = eqIdx !== -1;
+  const defaultValue = hasDefault ? withoutLeadingStars.slice(eqIdx + 1).trim() : undefined;
   const beforeEq = hasDefault
     ? withoutLeadingStars.slice(0, eqIdx).trim()
     : withoutLeadingStars.trim();
 
   const colonIdx = beforeEq.indexOf(":");
   if (colonIdx !== -1) {
-    return {
+    const p: Param = {
       name: stars + beforeEq.slice(0, colonIdx).trim(),
       annotation: beforeEq.slice(colonIdx + 1).trim(),
       hasDefault,
     };
+    if (defaultValue !== undefined) p.defaultValue = defaultValue;
+    return p;
   }
-  return { name: stars + beforeEq.trim(), annotation: null, hasDefault };
+  const p: Param = { name: stars + beforeEq.trim(), annotation: null, hasDefault };
+  if (defaultValue !== undefined) p.defaultValue = defaultValue;
+  return p;
 }
 
 /** Build a ParsedSignature from a single-line DEF_RE match. */
@@ -223,10 +276,30 @@ export function isGeneratorFunction(
   return false;
 }
 
+/** Returns true when the Returns/Yields section should be omitted for `sig`. */
+function shouldSkipReturn(sig: ParsedSignature, mode: ReturnMode): boolean {
+  if (sig.kind !== "def") return true;
+  switch (mode) {
+    case "always":
+      return false;
+    case "non-none":
+      return sig.returnAnnotation === "None";
+    case "when-annotated":
+    default:
+      return sig.returnAnnotation === null || sig.returnAnnotation === "None";
+  }
+}
+
 /**
  * Build a Google-style docstring as a raw VS Code snippet template string.
  *
- * Example output for def foo(a: int) -> bool with indent="    ":
+ * VS Code normalizes inline-completion snippet indentation by prepending the
+ * trigger line's indentation to every new line. This function therefore uses
+ * *relative* indentation (0-based for section headers, 4-space for param
+ * entries). The `indent` parameter is accepted for API compatibility but is
+ * not used inside the snippet body.
+ *
+ * Example snippet for def foo(a: int) -> bool  (indent/quoteChar supplied by caller):
  *
  *   ${1:_summary_}
  *
@@ -239,36 +312,49 @@ export function isGeneratorFunction(
  */
 export function buildGoogleDocstring(
   sig: ParsedSignature,
-  indent: string,
+  _indent: string,
   quoteChar: string,
-  opts: { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
 ): string {
-  const paramIndent = indent + "    ";
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
+  // 0-based: VS Code adds the trigger line's indentation to every new line.
+  const paramIndent = "    ";
   let n = 1;
-  let out = `\${${n++}:_summary_}`;
+  let out = `\${${n++}:${summaryPlaceholder}}`;
 
   if (sig.kind === "def" && sig.params.length > 0) {
-    out += `\n\n${indent}Args:\n`;
+    out += `\n\nArgs:\n`;
     for (const p of sig.params) {
-      const typeHint = p.annotation ? ` (${p.annotation})` : "";
-      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:_description_}\n`;
+      const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${defaultsNote}\n`;
     }
   }
 
-  const skipReturn =
-    sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
-
-  if (!skipReturn) {
-    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
     // Double newline when Returns/Yields is the first section (no Args above it)
     const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
-    out += `${sectionPrefix}${indent}${sectionLabel}:\n`;
-    out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}\n`;
+    out += `${sectionPrefix}${sectionLabel}:\n`;
+    const typePrefix =
+      sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
+    out += `${paramIndent}${typePrefix}\${${n++}:${descPlaceholder}}\n`;
   }
 
-  // One-liner if no sections were added; otherwise close on its own line
-  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
-  return out;
+  // Strip trailing whitespace from blank lines (VS Code indent-normalization adds
+  // the trigger-line indent to every new line, including empty separator lines).
+  // One-liner: no newline → closing quotes on same line (no indent needed).
+  // Multi-line: last char is \n → closing quotes on new line; VS Code adds base indent.
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
 }
 
 /** A plain-text docstring (no snippet syntax) for use in WorkspaceEdit insertions. */
@@ -276,29 +362,37 @@ export function buildGoogleDocstringText(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
 ): string {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
   const paramIndent = indent + "    ";
-  // Leading indent + opening quotes
-  let out = `${indent}${quoteChar}_summary_`;
+  let out = `${indent}${quoteChar}${summaryPlaceholder}`;
 
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `\n\n${indent}Args:\n`;
     for (const p of sig.params) {
-      const typeHint = p.annotation ? ` (${p.annotation})` : "";
-      out += `${paramIndent}${p.name}${typeHint}: _description_\n`;
+      const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${defaultsNote}\n`;
     }
   }
 
-  const skipReturn =
-    sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
-
-  if (!skipReturn) {
-    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
     // Double newline when Returns/Yields is the first section (no Args above it)
     const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
     out += `${sectionPrefix}${indent}${sectionLabel}:\n`;
-    out += `${paramIndent}${sig.returnAnnotation}: _description_\n`;
+    const typePrefix =
+      sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
+    out += `${paramIndent}${typePrefix}${descPlaceholder}\n`;
   }
 
   // One-liner if no sections were added; otherwise close on its own line
@@ -333,11 +427,27 @@ export function hasDocstring(lines: string[], defLine: number): boolean {
  * insertions needed to add Google-style docstrings to all of them.
  * Results are in document order (ascending afterLine).
  */
-export function generateFileInsertions(lines: string[], quoteChar = '"""'): DocstringInsertion[] {
+export function generateFileInsertions(
+  lines: string[],
+  opts: Partial<DocstringOptions> = {},
+): DocstringInsertion[] {
   const insertions: DocstringInsertion[] = [];
+  const quoteChar = opts.quoteChar ?? DEFAULT_OPTIONS.quoteChar;
+  const summaryPh = opts.summaryPlaceholder ?? DEFAULT_OPTIONS.summaryPlaceholder;
 
-  // TODO (Phase 5): if opts.generateModuleDocstring is true, insert a module-level
-  // docstring when the file does not already begin with one.
+  if (opts.generateModuleDocstring) {
+    const hasModuleDoc = (() => {
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        return t.startsWith('"""') || t.startsWith("'''");
+      }
+      return false;
+    })();
+    if (!hasModuleDoc) {
+      insertions.push({ afterLine: -1, text: `${quoteChar}${summaryPh}${quoteChar}` });
+    }
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i];
@@ -380,7 +490,10 @@ export function generateFileInsertions(lines: string[], quoteChar = '"""'): Docs
     const bodyIndent = defIndent + "    ";
 
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
-    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, { isGenerator });
+    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, {
+      isGenerator,
+      ...opts,
+    });
 
     insertions.push({ afterLine: sigEndLine, text: docText });
   }
@@ -410,6 +523,10 @@ export function applyInsertions(lines: string[], insertions: DocstringInsertion[
 export interface MergeOpts {
   /** Treat the function as a generator (Yields instead of Returns). Default: false. */
   isGenerator?: boolean;
+  /** When to emit a Returns / Yields section. Default: `"when-annotated"`. */
+  returnsMode?: ReturnMode;
+  /** Placeholder for new parameter / return descriptions. Default: `"_description_"`. */
+  descPlaceholder?: string;
 }
 
 /**
@@ -427,7 +544,11 @@ export function mergeDocstring(
   existing: ParsedDocstring,
   opts: MergeOpts = {},
 ): ParsedDocstring {
-  const { isGenerator = false } = opts;
+  const {
+    isGenerator = false,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+  } = opts;
 
   const existingByName = new Map(existing.params.map((p) => [p.name, p]));
 
@@ -436,12 +557,11 @@ export function mergeDocstring(
     return {
       name: p.name,
       typehint: p.annotation ?? null,
-      description: found?.description ?? "_description_",
+      description: found?.description ?? descPlaceholder,
     };
   });
 
-  const skipReturn =
-    sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
+  const skipReturn = shouldSkipReturn(sig, returnsMode);
 
   let newReturns: ParsedDocstring["returns"] = null;
   let newYields: ParsedDocstring["yields"] = null;
@@ -451,7 +571,7 @@ export function mergeDocstring(
       (isGenerator ? existing.yields?.description : existing.returns?.description) ??
       existing.returns?.description ??
       existing.yields?.description ??
-      "_description_";
+      descPlaceholder;
 
     if (isGenerator) {
       newYields = { typehint: sig.returnAnnotation, description: existingDesc };
@@ -523,7 +643,8 @@ export function renderGoogleDocstring(
   if (returnsEntry) {
     const label = parsed.yields !== null ? "Yields" : "Returns";
     out += `\n${indent}${label}:\n`;
-    out += renderDesc(`${paramIndent}${returnsEntry.typehint}: `, returnsEntry.description);
+    const typePrefix = returnsEntry.typehint ? `${returnsEntry.typehint}: ` : "";
+    out += renderDesc(`${paramIndent}${typePrefix}`, returnsEntry.description);
   }
 
   if (parsed.raises.length > 0) {
