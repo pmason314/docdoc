@@ -405,7 +405,8 @@ describe("buildGoogleDocstring", () => {
       returnAnnotation: null,
     });
     assert.ok(out.includes("_summary_"));
-    assert.ok(out.includes(`${INDENT}${Q}`));
+    // One-liner: closing quotes directly after summary, no newline
+    assert.ok(out.endsWith(Q));
     assert.ok(!out.includes("Args:"));
     assert.ok(!out.includes("Returns:"));
   });
@@ -442,6 +443,8 @@ describe("buildGoogleDocstring", () => {
     assert.ok(!out.includes("Args:"));
     assert.ok(out.includes("Returns:"));
     assert.ok(out.includes("bool:"));
+    // blank line between summary and Returns when there are no params
+    assert.ok(out.includes("_summary_}\n\n"));
   });
 
   it("with params and return — full Google docstring", () => {

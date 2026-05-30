@@ -257,10 +257,145 @@ export function buildGoogleDocstring(
 
   if (!skipReturn) {
     const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
-    out += `\n${indent}${sectionLabel}:\n`;
+    // Double newline when Returns/Yields is the first section (no Args above it)
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}${sectionLabel}:\n`;
     out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}\n`;
   }
 
-  out += `${indent}${quoteChar}`;
+  // One-liner if no sections were added; otherwise close on its own line
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
+}
+
+/** A plain-text docstring (no snippet syntax) for use in WorkspaceEdit insertions. */
+export function buildGoogleDocstringText(
+  sig: ParsedSignature,
+  indent: string,
+  quoteChar: string,
+  opts: { isGenerator?: boolean } = {},
+): string {
+  const paramIndent = indent + "    ";
+  // Leading indent + opening quotes
+  let out = `${indent}${quoteChar}_summary_`;
+
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `\n\n${indent}Args:\n`;
+    for (const p of sig.params) {
+      const typeHint = p.annotation ? ` (${p.annotation})` : "";
+      out += `${paramIndent}${p.name}${typeHint}: _description_\n`;
+    }
+  }
+
+  const skipReturn =
+    sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
+
+  if (!skipReturn) {
+    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
+    // Double newline when Returns/Yields is the first section (no Args above it)
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}${sectionLabel}:\n`;
+    out += `${paramIndent}${sig.returnAnnotation}: _description_\n`;
+  }
+
+  // One-liner if no sections were added; otherwise close on its own line
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+
+/** A single docstring insertion: insert `text` as a new line after `afterLine`. */
+export interface DocstringInsertion {
+  /** 0-based line index after which the docstring is inserted. */
+  afterLine: number;
+  /** Full docstring text (no trailing newline). */
+  text: string;
+}
+
+/**
+ * Returns true if the line immediately after `defLine` is an existing docstring
+ * (starts with `"""` or `'''` after stripping leading whitespace).
+ */
+export function hasDocstring(lines: string[], defLine: number): boolean {
+  // The docstring appears on the first non-empty line of the body
+  for (let i = defLine + 1; i < lines.length && i <= defLine + 5; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+    return trimmed.startsWith('"""') || trimmed.startsWith("'''");
+  }
+  return false;
+}
+
+/**
+ * Scan every def/class in `lines` that lacks a docstring and return the
+ * insertions needed to add Google-style docstrings to all of them.
+ * Results are in document order (ascending afterLine).
+ */
+export function generateFileInsertions(lines: string[], quoteChar = '"""'): DocstringInsertion[] {
+  const insertions: DocstringInsertion[] = [];
+
+  // TODO (Phase 5): if opts.generateModuleDocstring is true, insert a module-level
+  // docstring when the file does not already begin with one.
+
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+
+    // Only fire on def/class lines (single-line sigs; multi-line handled below).
+    // Commented-out lines (e.g. `# def foo():`) never match DEF_RE/CLASS_RE because
+    // `#` is not whitespace, so they are skipped automatically.
+    const isDefOrClass = DEF_RE.test(text) || CLASS_RE.test(text);
+    if (!isDefOrClass) continue;
+
+    // Find the end of the signature (last line before the body starts)
+    // For single-line sigs this is just i; for multi-line it's the closing `:` line
+    let sigEndLine = i;
+    if (!text.trimEnd().endsWith(":")) {
+      // Multi-line: scan forward for the closing `:` that ends the signature
+      let depth = 0;
+      for (const ch of text) {
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      let j = i + 1;
+      while (j < lines.length && depth > 0) {
+        for (const ch of lines[j]) {
+          if (ch === "(") depth++;
+          else if (ch === ")") depth--;
+        }
+        j++;
+      }
+      sigEndLine = j - 1;
+    }
+
+    if (hasDocstring(lines, sigEndLine)) continue;
+
+    // Build the signature from a backward scan starting at sigEndLine
+    const found = findSignatureFromLines(lines, sigEndLine);
+    if (!found) continue;
+
+    // Determine indentation of the body (one level deeper than the def)
+    const defIndent = (text.match(/^(\s*)/) ?? ["", ""])[1];
+    const bodyIndent = defIndent + "    ";
+
+    const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
+    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, { isGenerator });
+
+    insertions.push({ afterLine: sigEndLine, text: docText });
+  }
+
+  return insertions;
+}
+
+/**
+ * Apply a list of insertions to a lines array and return the new lines.
+ * Insertions must be in ascending order of afterLine.
+ */
+export function applyInsertions(lines: string[], insertions: DocstringInsertion[]): string[] {
+  const result = [...lines];
+  let offset = 0;
+  for (const ins of insertions) {
+    const insertAt = ins.afterLine + 1 + offset;
+    result.splice(insertAt, 0, ins.text);
+    offset++;
+  }
+  return result;
 }

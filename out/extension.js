@@ -34,9 +34,9 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode2 = __toESM(require("vscode"));
+var vscode4 = __toESM(require("vscode"));
 
-// src/trigger.ts
+// src/codeAction.ts
 var vscode = __toESM(require("vscode"));
 
 // src/parser.ts
@@ -212,12 +212,178 @@ ${indent}${sectionLabel}:
     out += `${paramIndent}${sig.returnAnnotation}: \${${n++}:_description_}
 `;
   }
-  out += `${indent}${quoteChar}`;
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
+}
+function buildGoogleDocstringText(sig, indent, quoteChar, opts = {}) {
+  const paramIndent = indent + "    ";
+  let out = `${indent}${quoteChar}_summary_`;
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `
+
+${indent}Args:
+`;
+    for (const p of sig.params) {
+      const typeHint = p.annotation ? ` (${p.annotation})` : "";
+      out += `${paramIndent}${p.name}${typeHint}: _description_
+`;
+    }
+  }
+  const skipReturn = sig.kind !== "def" || sig.returnAnnotation === null || sig.returnAnnotation === "None";
+  if (!skipReturn) {
+    const sectionLabel = opts.isGenerator ? "Yields" : "Returns";
+    out += `
+${indent}${sectionLabel}:
+`;
+    out += `${paramIndent}${sig.returnAnnotation}: _description_
+`;
+  }
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+function hasDocstring(lines, defLine) {
+  for (let i = defLine + 1; i < lines.length && i <= defLine + 5; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+    return trimmed.startsWith('"""') || trimmed.startsWith("'''");
+  }
+  return false;
+}
+function generateFileInsertions(lines, quoteChar = '"""') {
+  const insertions = [];
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+    const isDefOrClass = DEF_RE.test(text) || CLASS_RE.test(text);
+    if (!isDefOrClass) continue;
+    let sigEndLine = i;
+    if (!text.trimEnd().endsWith(":")) {
+      let depth = 0;
+      for (const ch of text) {
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      let j = i + 1;
+      while (j < lines.length && depth > 0) {
+        for (const ch of lines[j]) {
+          if (ch === "(") depth++;
+          else if (ch === ")") depth--;
+        }
+        j++;
+      }
+      sigEndLine = j - 1;
+    }
+    if (hasDocstring(lines, sigEndLine)) continue;
+    const found = findSignatureFromLines(lines, sigEndLine);
+    if (!found) continue;
+    const defIndent = (text.match(/^(\s*)/) ?? ["", ""])[1];
+    const bodyIndent = defIndent + "    ";
+    const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
+    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, { isGenerator });
+    insertions.push({ afterLine: sigEndLine, text: docText });
+  }
+  return insertions;
+}
+
+// src/codeAction.ts
+var GenerateDocstringActionProvider = class {
+  static {
+    this.providedKinds = [vscode.CodeActionKind.QuickFix];
+  }
+  provideCodeActions(document, range) {
+    const actions = [];
+    for (let i = range.start.line; i <= range.end.line; i++) {
+      const text = document.lineAt(i).text;
+      if (!DEF_RE.test(text) && !CLASS_RE.test(text)) continue;
+      const lines = Array.from(
+        { length: document.lineCount },
+        (_, n) => document.lineAt(n).text
+      );
+      if (hasDocstring(lines, i)) continue;
+      const action = new vscode.CodeAction(
+        "Generate docstring",
+        vscode.CodeActionKind.QuickFix
+      );
+      action.command = {
+        command: "docstringGenerator.generate",
+        title: "Generate docstring",
+        arguments: [{ line: i }]
+      };
+      action.isPreferred = true;
+      actions.push(action);
+    }
+    return actions;
+  }
+};
+
+// src/commands.ts
+var vscode2 = __toESM(require("vscode"));
+function docLines(document) {
+  return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
+}
+function insertionEdit(document, afterLine, text) {
+  const edit = new vscode2.WorkspaceEdit();
+  const insertPos = new vscode2.Position(afterLine + 1, 0);
+  edit.insert(document.uri, insertPos, text + "\n");
+  return edit;
+}
+async function generate(editor) {
+  const document = editor.document;
+  const cursorLine = editor.selection.active.line;
+  const lines = docLines(document);
+  const found = findSignatureFromLines(lines, cursorLine);
+  if (!found) {
+    vscode2.window.showInformationMessage("No function or class found at cursor.");
+    return;
+  }
+  const { sig, defLine } = found;
+  let sigEndLine = defLine;
+  if (!lines[defLine].trimEnd().endsWith(":")) {
+    let depth = 0;
+    for (const ch of lines[defLine]) {
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+    }
+    let j = defLine + 1;
+    while (j < lines.length && depth > 0) {
+      for (const ch of lines[j]) {
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      j++;
+    }
+    sigEndLine = j - 1;
+  }
+  if (hasDocstring(lines, sigEndLine)) {
+    vscode2.window.showInformationMessage("Docstring already exists.");
+    return;
+  }
+  const defText = lines[defLine];
+  const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
+  const bodyIndent = defIndent + "    ";
+  const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
+  const docText = buildGoogleDocstringText(sig, bodyIndent, '"""', { isGenerator });
+  const edit = insertionEdit(document, sigEndLine, docText);
+  await vscode2.workspace.applyEdit(edit);
+}
+async function generateFile(editor) {
+  const document = editor.document;
+  const lines = docLines(document);
+  const insertions = generateFileInsertions(lines);
+  if (insertions.length === 0) {
+    vscode2.window.showInformationMessage("All functions already have docstrings.");
+    return;
+  }
+  const edit = new vscode2.WorkspaceEdit();
+  for (const ins of insertions) {
+    const insertPos = new vscode2.Position(ins.afterLine + 1, 0);
+    edit.insert(document.uri, insertPos, ins.text + "\n");
+  }
+  await vscode2.workspace.applyEdit(edit);
 }
 
 // src/trigger.ts
-function docLines(document) {
+var vscode3 = __toESM(require("vscode"));
+function docLines2(document) {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
 }
 var DocstringTrigger = class {
@@ -229,7 +395,7 @@ var DocstringTrigger = class {
     if (!tripleQuoteMatch) return [];
     const indent = tripleQuoteMatch[1];
     const quoteChar = tripleQuoteMatch[2];
-    const lines = docLines(document);
+    const lines = docLines2(document);
     const found = findSignatureFromLines(lines, position.line - 1);
     let snippetValue;
     if (found) {
@@ -241,17 +407,24 @@ ${indent}${quoteChar}`;
     } else {
       return [];
     }
-    const range = new vscode.Range(position, position.with(void 0, lineText.length));
-    return [new vscode.InlineCompletionItem(new vscode.SnippetString(snippetValue), range)];
+    const range = new vscode3.Range(position, position.with(void 0, lineText.length));
+    return [new vscode3.InlineCompletionItem(new vscode3.SnippetString(snippetValue), range)];
   }
 };
 
 // src/extension.ts
 function activate(context) {
   context.subscriptions.push(
-    vscode2.languages.registerInlineCompletionItemProvider(
+    vscode4.languages.registerInlineCompletionItemProvider(
       { language: "python" },
       new DocstringTrigger()
+    ),
+    vscode4.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
+    vscode4.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
+    vscode4.languages.registerCodeActionsProvider(
+      { language: "python" },
+      new GenerateDocstringActionProvider(),
+      { providedCodeActionKinds: GenerateDocstringActionProvider.providedKinds }
     )
   );
 }

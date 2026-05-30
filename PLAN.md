@@ -30,7 +30,9 @@ First useful commands. Uses hardcoded Google style (no config yet).
 - [ ] **`src/codeAction.ts`** — `CodeActionProvider` that detects undocumented functions in the
   visible range and offers a "Generate docstring" lightbulb quick fix.
 - [ ] Register commands and provider in `extension.ts`.
-- [ ] Tests for undocumented-function detection and insertion logic.
+- [ ] Unit tests for insertion logic in `src/test/unit/commands.test.ts`.
+- [ ] Integration tests in `src/test/integration/generateFile.test.ts` — read
+  `src/test/fixtures/*.input.py`, run the pure transform, compare against `*.expected.py`.
 
 ---
 
@@ -67,7 +69,10 @@ Wire up all the settings declared in `package.json`. Applies retroactively to al
   `DocstringOptions` struct.
 - [ ] Options to wire: `quoteStyle`, `includeTypesFromAnnotations`, `includeDefaults`,
   `returns.skipNone`, `returns.requireAnnotation`, `detectGenerators`, `placeholders.summary`,
-  `placeholders.description`, `update.removeStaleParams`, `onSave.enable`.
+  `placeholders.description`, `update.removeStaleParams`, `onSave.enable`,
+  `generateModuleDocstring`.
+- [ ] `generateModuleDocstring`: when true, `generateFileInsertions` inserts a module-level
+  docstring if the file does not already begin with one (stub TODO already in parser.ts).
 - [ ] Thread `DocstringOptions` through all builder and command functions.
 - [ ] Trigger and commands read config on each invocation (no caching).
 
@@ -96,16 +101,19 @@ Depends on Phase 5 (`format` config option).
 
 ## File Map
 
-| File                                    | Status        | Role                                                                               |
-| --------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
-| `src/parser.ts`                         | exists        | Pure logic: parsing, snippet building                                              |
-| `src/trigger.ts`                        | exists        | Inline completion provider (vscode adapter)                                        |
-| `src/extension.ts`                      | exists        | Activation, provider/command registration                                          |
-| `src/commands.ts`                       | **to create** | `generate`, `generateFile`, `update`, `updateFile`, `convert`, `convertFileFormat` |
-| `src/codeAction.ts`                     | **to create** | Lightbulb code action provider                                                     |
-| `src/docstringParser.ts`                | **to create** | Parse existing docstring sections                                                  |
-| `src/onSave.ts`                         | **to create** | On-save trigger                                                                    |
-| `src/config.ts`                         | **to create** | Typed config reader                                                                |
-| `src/test/unit/parser.test.ts`          | exists        | 63 tests                                                                           |
-| `src/test/unit/commands.test.ts`        | **to create** | Command logic tests                                                                |
-| `src/test/unit/docstringParser.test.ts` | **to create** | Docstring parsing tests                                                            |
+| File                                        | Status        | Role                                                                               |
+| ------------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `src/parser.ts`                             | exists        | Pure logic: parsing, snippet building                                              |
+| `src/trigger.ts`                            | exists        | Inline completion provider (vscode adapter)                                        |
+| `src/extension.ts`                          | exists        | Activation, provider/command registration                                          |
+| `src/commands.ts`                           | **to create** | `generate`, `generateFile`, `update`, `updateFile`, `convert`, `convertFileFormat` |
+| `src/codeAction.ts`                         | **to create** | Lightbulb code action provider                                                     |
+| `src/docstringParser.ts`                    | **to create** | Parse existing docstring sections                                                  |
+| `src/onSave.ts`                             | **to create** | On-save trigger                                                                    |
+| `src/config.ts`                             | **to create** | Typed config reader                                                                |
+| `src/test/unit/parser.test.ts`              | exists        | 63 tests                                                                           |
+| `src/test/unit/commands.test.ts`            | **to create** | Command logic tests                                                                |
+| `src/test/unit/docstringParser.test.ts`     | **to create** | Docstring parsing tests                                                            |
+| `src/test/integration/generateFile.test.ts` | **to create** | Fixture-driven generate tests                                                      |
+| `src/test/fixtures/*.input.py`              | **to create** | Input Python files for integration tests                                           |
+| `src/test/fixtures/*.expected.py`           | **to create** | Expected output for integration tests                                              |

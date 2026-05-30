@@ -1,4 +1,7 @@
 require:
   - tsx/cjs
-spec: "src/test/unit/**/*.test.ts"
+spec:
+  - "src/test/unit/**/*.test.ts"
+  - "src/test/integration/**/*.test.ts"
+# Override with --spec flag when running test:unit or test:integration individually
 timeout: 10000

@@ -172,6 +172,11 @@
           "default": true,
           "description": "Fall back to tree-sitter token scanning for raises when no interpreter is available."
         },
+        "docstringGenerator.generateModuleDocstring": {
+          "type": "boolean",
+          "default": false,
+          "description": "When running Generate Docstrings for File, also insert a module-level docstring if the file does not already have one."
+        },
         "docstringGenerator.mergeInitParams": {
           "type": "boolean",
           "default": false,
@@ -242,7 +247,9 @@
     "package": "NODE_ENV=production node esbuild.js",
     "vscode:prepublish": "npm run package",
     "lint": "eslint src/",
-    "test:unit": "mocha",
+    "test:unit": "mocha --spec 'src/test/unit/**/*.test.ts'",
+    "test:integration": "mocha --spec 'src/test/integration/**/*.test.ts'",
+    "test:all": "mocha",
     "test": "vscode-test"
   },
   "devDependencies": {
