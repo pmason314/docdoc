@@ -1,6 +1,6 @@
 {
   "name": "docdoc",
-  "displayName": "Docdoc - Python Docstring Generator",
+  "displayName": "Docdoc - Automatic Python Docstrings",
   "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format..",
   "version": "0.1.0",
   "publisher": "pmason314",
