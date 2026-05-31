@@ -327,7 +327,8 @@ export function buildGoogleDocstring(
   // 0-based: VS Code adds the trigger line's indentation to every new line.
   const paramIndent = "    ";
   let n = 1;
-  let out = `\${${n++}:${summaryPlaceholder}}`;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
 
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `\n\nArgs:\n`;
@@ -335,7 +336,8 @@ export function buildGoogleDocstring(
       const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
       const defaultsNote =
         includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
-      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${defaultsNote}\n`;
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}\n`;
     }
   }
 
@@ -373,7 +375,8 @@ export function buildGoogleDocstringText(
     isGenerator = false,
   } = opts;
   const paramIndent = indent + "    ";
-  let out = `${indent}${quoteChar}${summaryPlaceholder}`;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
 
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `\n\n${indent}Args:\n`;
@@ -381,7 +384,8 @@ export function buildGoogleDocstringText(
       const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
       const defaultsNote =
         includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
-      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${defaultsNote}\n`;
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${descSuffix}${defaultsNote}\n`;
     }
   }
 
@@ -445,7 +449,11 @@ export function generateFileInsertions(
       return false;
     })();
     if (!hasModuleDoc) {
-      insertions.push({ afterLine: -1, text: `${quoteChar}${summaryPh}${quoteChar}` });
+      const summaryPeriod = summaryPh.includes(".") ? "" : ".";
+      insertions.push({
+        afterLine: -1,
+        text: `${quoteChar}${summaryPh}${summaryPeriod}${quoteChar}`,
+      });
     }
   }
 

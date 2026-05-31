@@ -8,16 +8,16 @@ if TYPE_CHECKING:
 
 
 def func_no_params():
-    """_summary_"""
+    """_summary_."""
     return 42
 
 
 def func_with_params(a, b=2, *args, **kwargs) -> int:
-    """_summary_
+    """_summary_.
 
     Args:
         a: _description_
-        b: _description_ Defaults to 2.
+        b: _description_. Defaults to 2.
         *args: _description_
         **kwargs: _description_
 
@@ -30,7 +30,7 @@ def func_with_params(a, b=2, *args, **kwargs) -> int:
 
 
 def func_with_annotations(x: int, y: str) -> str:
-    """_summary_
+    """_summary_.
 
     Args:
         x (int): _description_
@@ -43,7 +43,7 @@ def func_with_annotations(x: int, y: str) -> str:
 
 
 async def async_func(x):
-    """_summary_
+    """_summary_.
 
     Args:
         x: _description_
@@ -52,7 +52,7 @@ async def async_func(x):
 
 
 def generator_func(n):
-    """_summary_
+    """_summary_.
 
     Args:
         n: _description_
@@ -62,29 +62,29 @@ def generator_func(n):
 
 
 def raises_func():
-    """_summary_"""
+    """_summary_."""
     raise RuntimeError("oops")
 
 
 def kw_only(a, *, b, c=3):
-    """_summary_
+    """_summary_.
 
     Args:
         a: _description_
         b: _description_
-        c: _description_ Defaults to 3.
+        c: _description_. Defaults to 3.
     """
     return a + b + c
 
 
 def nested_example(a):
-    """_summary_
+    """_summary_.
 
     Args:
         a: _description_
     """
     def inner(b):
-        """_summary_
+        """_summary_.
 
         Args:
             b: _description_
@@ -95,7 +95,7 @@ def nested_example(a):
 
 
 def complex_typing(x: int | None) -> str | None:
-    """_summary_
+    """_summary_.
 
     Args:
         x (int | None): _description_
@@ -109,7 +109,7 @@ def complex_typing(x: int | None) -> str | None:
 
 
 def returns_tuple() -> tuple[int, str]:
-    """_summary_
+    """_summary_.
 
     Returns:
         tuple[int, str]: _description_
@@ -118,19 +118,19 @@ def returns_tuple() -> tuple[int, str]:
 
 
 class SimpleClass:
-    """_summary_"""
+    """_summary_."""
     def __init__(self, x, y=1):
-        """_summary_
+        """_summary_.
 
         Args:
             x: _description_
-            y: _description_ Defaults to 1.
+            y: _description_. Defaults to 1.
         """
         self.x = x
         self.y = y
 
     def method(self, z):
-        """_summary_
+        """_summary_.
 
         Args:
             z: _description_
@@ -139,10 +139,10 @@ class SimpleClass:
 
 
 class ClassWithClassMethod:
-    """_summary_"""
+    """_summary_."""
     @classmethod
     def cm(cls, v):
-        """_summary_
+        """_summary_.
 
         Args:
             v: _description_
@@ -151,7 +151,7 @@ class ClassWithClassMethod:
 
     @staticmethod
     def sm(v):
-        """_summary_
+        """_summary_.
 
         Args:
             v: _description_
@@ -160,9 +160,9 @@ class ClassWithClassMethod:
 
 
 class WithProperty:
-    """_summary_"""
+    """_summary_."""
     def __init__(self, val):
-        """_summary_
+        """_summary_.
 
         Args:
             val: _description_
@@ -171,12 +171,12 @@ class WithProperty:
 
     @property
     def value(self):
-        """_summary_"""
+        """_summary_."""
         return self._v
 
     @value.setter
     def value(self, v):
-        """_summary_
+        """_summary_.
 
         Args:
             v: _description_
@@ -185,13 +185,13 @@ class WithProperty:
 
 
 class ContextManager:
-    """_summary_"""
+    """_summary_."""
     def __enter__(self):
-        """_summary_"""
+        """_summary_."""
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        """_summary_
+        """_summary_.
 
         Args:
             exc_type: _description_
@@ -203,23 +203,23 @@ class ContextManager:
 
 @dataclass
 class DC:
-    """_summary_"""
+    """_summary_."""
     x: int
     y: str = ""
 
     def method(self):
-        """_summary_"""
+        """_summary_."""
         return self.x
 
 
 def decorator(func: Callable):
-    """_summary_
+    """_summary_.
 
     Args:
         func (Callable): _description_
     """
     def wrapper(*args, **kwargs):
-        """_summary_
+        """_summary_.
 
         Args:
             *args: _description_
@@ -232,7 +232,7 @@ def decorator(func: Callable):
 
 @decorator
 def decorated(a, b):
-    """_summary_
+    """_summary_.
 
     Args:
         a: _description_
@@ -242,7 +242,7 @@ def decorated(a, b):
 
 
 def try_except_reraise():
-    """_summary_"""
+    """_summary_."""
     try:
         1 / 0
     except ZeroDivisionError:
@@ -251,7 +251,7 @@ def try_except_reraise():
 
 # Fully-typed function for testing
 def fully_typed(a: int, b: str, c: list[int]) -> dict[str, int | None]:
-    """_summary_
+    """_summary_.
 
     Args:
         a (int): _description_
@@ -272,7 +272,7 @@ T = TypeVar("T")
 
 
 def identity(x: T) -> T:
-    """_summary_
+    """_summary_.
 
     Args:
         x (T): _description_

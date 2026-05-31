@@ -446,7 +446,7 @@ describe("buildGoogleDocstring", () => {
     assert.ok(out.includes("Returns:"));
     assert.ok(out.includes("bool:"));
     // blank line between summary and Returns when there are no params
-    assert.ok(out.includes("_summary_}\n\n"));
+    assert.ok(out.includes("_summary_}.\n\n"));
   });
 
   it("with params and return — full Google docstring", () => {
@@ -465,7 +465,7 @@ describe("buildGoogleDocstring", () => {
     assert.ok(out.includes("Returns:"));
     assert.ok(out.includes("bool:"));
     // Tab stops should be numbered
-    assert.ok(out.includes("${1:_summary_}"));
+    assert.ok(out.includes("${1:_summary_}."));
     assert.ok(out.includes("${2:_description_}"));
     assert.ok(out.includes("${3:_description_}"));
     assert.ok(out.includes("${4:_description_}"));

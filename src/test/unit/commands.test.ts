@@ -58,17 +58,17 @@ describe("buildGoogleDocstringText", () => {
 
   it("no params, no return — one-liner", () => {
     const out = build({ kind: "def", name: "f", params: [], returnAnnotation: null });
-    assert.equal(out, `${INDENT}${Q}_summary_${Q}`);
+    assert.equal(out, `${INDENT}${Q}_summary_.${Q}`);
   });
 
   it("None return — one-liner (return suppressed)", () => {
     const out = build({ kind: "def", name: "f", params: [], returnAnnotation: "None" });
-    assert.equal(out, `${INDENT}${Q}_summary_${Q}`);
+    assert.equal(out, `${INDENT}${Q}_summary_.${Q}`);
   });
 
   it("class — one-liner", () => {
     const out = build({ kind: "class", name: "Foo", params: [], returnAnnotation: null });
-    assert.equal(out, `${INDENT}${Q}_summary_${Q}`);
+    assert.equal(out, `${INDENT}${Q}_summary_.${Q}`);
   });
 
   it("starts with the supplied indent + opening quotes", () => {
@@ -83,7 +83,7 @@ describe("buildGoogleDocstringText", () => {
       params: [{ name: "a", annotation: "int", hasDefault: false }],
       returnAnnotation: null,
     });
-    assert.ok(out.startsWith(`${INDENT}${Q}_summary_\n`));
+    assert.ok(out.startsWith(`${INDENT}${Q}_summary_.\n`));
     assert.ok(out.includes(`${INDENT}Args:\n`));
     assert.ok(out.includes("        a (int): _description_\n"));
     assert.ok(out.endsWith(`${INDENT}${Q}`));
@@ -100,7 +100,7 @@ describe("buildGoogleDocstringText", () => {
     assert.ok(out.includes("        bool: _description_\n"));
     assert.ok(out.endsWith(`${INDENT}${Q}`));
     // blank line between summary and Returns when there are no params
-    assert.ok(out.includes("_summary_\n\n"));
+    assert.ok(out.includes("_summary_.\n\n"));
   });
 
   it("generator uses Yields section", () => {
@@ -148,7 +148,7 @@ describe("buildGoogleDocstringText", () => {
       '"""',
       { includeDefaults: true },
     );
-    assert.ok(out.includes("x (int): _description_ Defaults to 42.\n"));
+    assert.ok(out.includes("x (int): _description_. Defaults to 42.\n"));
   });
 
   it("includeDefaults=false omits 'Defaults to X.' even when defaultValue is present", () => {

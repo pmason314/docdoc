@@ -34,7 +34,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode5 = __toESM(require("vscode"));
+var vscode6 = __toESM(require("vscode"));
 
 // src/codeAction.ts
 var vscode = __toESM(require("vscode"));
@@ -397,7 +397,8 @@ function buildGoogleDocstring(sig, _indent, quoteChar, opts = {}) {
   } = opts;
   const paramIndent = "    ";
   let n = 1;
-  let out = `\${${n++}:${summaryPlaceholder}}`;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `
 
@@ -406,7 +407,8 @@ Args:
     for (const p of sig.params) {
       const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
       const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
-      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${defaultsNote}
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${paramIndent}${p.name}${typeHint}: \${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}
 `;
     }
   }
@@ -432,7 +434,8 @@ function buildGoogleDocstringText(sig, indent, quoteChar, opts = {}) {
     isGenerator = false
   } = opts;
   const paramIndent = indent + "    ";
-  let out = `${indent}${quoteChar}${summaryPlaceholder}`;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
   if (sig.kind === "def" && sig.params.length > 0) {
     out += `
 
@@ -441,7 +444,8 @@ ${indent}Args:
     for (const p of sig.params) {
       const typeHint = includeTypes && p.annotation ? ` (${p.annotation})` : "";
       const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
-      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${defaultsNote}
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${paramIndent}${p.name}${typeHint}: ${descPlaceholder}${descSuffix}${defaultsNote}
 `;
     }
   }
@@ -479,7 +483,11 @@ function generateFileInsertions(lines, opts = {}) {
       return false;
     })();
     if (!hasModuleDoc) {
-      insertions.push({ afterLine: -1, text: `${quoteChar}${summaryPh}${quoteChar}` });
+      const summaryPeriod = summaryPh.includes(".") ? "" : ".";
+      insertions.push({
+        afterLine: -1,
+        text: `${quoteChar}${summaryPh}${summaryPeriod}${quoteChar}`
+      });
     }
   }
   for (let i = 0; i < lines.length; i++) {
@@ -678,13 +686,35 @@ var GenerateDocstringActionProvider = class {
 };
 
 // src/commands.ts
+var vscode3 = __toESM(require("vscode"));
+
+// src/config.ts
 var vscode2 = __toESM(require("vscode"));
+function readConfig(resource) {
+  const cfg = vscode2.workspace.getConfiguration("docstringGenerator", resource);
+  const quoteStyle = cfg.get("quoteStyle", "double");
+  const quoteChar = quoteStyle === "single" ? "'''" : '"""';
+  return {
+    quoteChar,
+    includeTypes: cfg.get("includeTypesFromAnnotations", DEFAULT_OPTIONS.includeTypes),
+    includeDefaults: cfg.get("includeDefaults", DEFAULT_OPTIONS.includeDefaults),
+    returnsMode: cfg.get("returns.mode", DEFAULT_OPTIONS.returnsMode),
+    summaryPlaceholder: cfg.get("placeholders.summary", DEFAULT_OPTIONS.summaryPlaceholder),
+    descPlaceholder: cfg.get("placeholders.description", DEFAULT_OPTIONS.descPlaceholder),
+    generateModuleDocstring: cfg.get(
+      "generateModuleDocstring",
+      DEFAULT_OPTIONS.generateModuleDocstring
+    )
+  };
+}
+
+// src/commands.ts
 function docLines(document) {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
 }
 function insertionEdit(document, afterLine, text) {
-  const edit = new vscode2.WorkspaceEdit();
-  const insertPos = new vscode2.Position(afterLine + 1, 0);
+  const edit = new vscode3.WorkspaceEdit();
+  const insertPos = new vscode3.Position(afterLine + 1, 0);
   edit.insert(document.uri, insertPos, text + "\n");
   return edit;
 }
@@ -692,10 +722,10 @@ async function generate(editor) {
   const document = editor.document;
   const cursorLine = editor.selection.active.line;
   const lines = docLines(document);
-  const opts = (void 0)(document.uri);
+  const opts = readConfig(document.uri);
   const found = findSignatureFromLines(lines, cursorLine);
   if (!found) {
-    vscode2.window.showInformationMessage("No function or class found at cursor.");
+    vscode3.window.showInformationMessage("No function or class found at cursor.");
     return;
   }
   const { sig, defLine } = found;
@@ -717,7 +747,7 @@ async function generate(editor) {
     sigEndLine = j - 1;
   }
   if (hasDocstring(lines, sigEndLine)) {
-    vscode2.window.showInformationMessage("Docstring already exists.");
+    vscode3.window.showInformationMessage("Docstring already exists.");
     return;
   }
   const defText = lines[defLine];
@@ -729,32 +759,32 @@ async function generate(editor) {
     ...opts
   });
   const edit = insertionEdit(document, sigEndLine, docText);
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 async function generateFile(editor) {
   const document = editor.document;
   const lines = docLines(document);
-  const opts = (void 0)(document.uri);
+  const opts = readConfig(document.uri);
   const insertions = generateFileInsertions(lines, opts);
   if (insertions.length === 0) {
-    vscode2.window.showInformationMessage("All functions already have docstrings.");
+    vscode3.window.showInformationMessage("All functions already have docstrings.");
     return;
   }
-  const edit = new vscode2.WorkspaceEdit();
+  const edit = new vscode3.WorkspaceEdit();
   for (const ins of insertions) {
-    const insertPos = new vscode2.Position(ins.afterLine + 1, 0);
+    const insertPos = new vscode3.Position(ins.afterLine + 1, 0);
     edit.insert(document.uri, insertPos, ins.text + "\n");
   }
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 async function update(editor) {
   const document = editor.document;
   const cursorLine = editor.selection.active.line;
   const lines = docLines(document);
-  const opts = (void 0)(document.uri);
+  const opts = readConfig(document.uri);
   const found = findSignatureFromLines(lines, cursorLine);
   if (!found) {
-    vscode2.window.showInformationMessage("No function or class found at cursor.");
+    vscode3.window.showInformationMessage("No function or class found at cursor.");
     return;
   }
   const isGenerator = isGeneratorFunction(lines, found.defLine, found.defLine + 1);
@@ -764,22 +794,22 @@ async function update(editor) {
     descPlaceholder: opts.descPlaceholder
   });
   if (!result) {
-    vscode2.window.showInformationMessage("No docstring found to update.");
+    vscode3.window.showInformationMessage("No docstring found to update.");
     return;
   }
-  const edit = new vscode2.WorkspaceEdit();
-  const range = new vscode2.Range(
-    new vscode2.Position(result.startLine, 0),
-    new vscode2.Position(result.endLine, document.lineAt(result.endLine).text.length)
+  const edit = new vscode3.WorkspaceEdit();
+  const range = new vscode3.Range(
+    new vscode3.Position(result.startLine, 0),
+    new vscode3.Position(result.endLine, document.lineAt(result.endLine).text.length)
   );
   edit.replace(document.uri, range, result.text);
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 async function updateFile(editor) {
   const document = editor.document;
   const lines = docLines(document);
-  const opts = (void 0)(document.uri);
-  const edit = new vscode2.WorkspaceEdit();
+  const opts = readConfig(document.uri);
+  const edit = new vscode3.WorkspaceEdit();
   let count = 0;
   for (let i = 0; i < lines.length; i++) {
     const found = findSignatureFromLines(lines, i);
@@ -791,18 +821,18 @@ async function updateFile(editor) {
       descPlaceholder: opts.descPlaceholder
     });
     if (!result) continue;
-    const range = new vscode2.Range(
-      new vscode2.Position(result.startLine, 0),
-      new vscode2.Position(result.endLine, document.lineAt(result.endLine).text.length)
+    const range = new vscode3.Range(
+      new vscode3.Position(result.startLine, 0),
+      new vscode3.Position(result.endLine, document.lineAt(result.endLine).text.length)
     );
     edit.replace(document.uri, range, result.text);
     count++;
   }
   if (count === 0) {
-    vscode2.window.showInformationMessage("No documented functions found to update.");
+    vscode3.window.showInformationMessage("No documented functions found to update.");
     return;
   }
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 async function convert(editor) {
   const document = editor.document;
@@ -817,12 +847,12 @@ async function convert(editor) {
     }
   }
   if (docOpenLine === -1) {
-    vscode2.window.showInformationMessage("No docstring found at cursor.");
+    vscode3.window.showInformationMessage("No docstring found at cursor.");
     return;
   }
   const parseResult = parseGoogleDocstring(lines, docOpenLine);
   if (!parseResult) {
-    vscode2.window.showInformationMessage("Could not parse docstring.");
+    vscode3.window.showInformationMessage("Could not parse docstring.");
     return;
   }
   const rendered = renderGoogleDocstring(
@@ -830,18 +860,18 @@ async function convert(editor) {
     parseResult.indent,
     parseResult.quoteChar
   );
-  const edit = new vscode2.WorkspaceEdit();
-  const range = new vscode2.Range(
-    new vscode2.Position(parseResult.startLine, 0),
-    new vscode2.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
+  const edit = new vscode3.WorkspaceEdit();
+  const range = new vscode3.Range(
+    new vscode3.Position(parseResult.startLine, 0),
+    new vscode3.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
   );
   edit.replace(document.uri, range, rendered);
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 async function convertFileFormat(editor) {
   const document = editor.document;
   const lines = docLines(document);
-  const edit = new vscode2.WorkspaceEdit();
+  const edit = new vscode3.WorkspaceEdit();
   let count = 0;
   for (let i = 0; i < lines.length; i++) {
     const t = lines[i].trim();
@@ -853,44 +883,44 @@ async function convertFileFormat(editor) {
       parseResult.indent,
       parseResult.quoteChar
     );
-    const range = new vscode2.Range(
-      new vscode2.Position(parseResult.startLine, 0),
-      new vscode2.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
+    const range = new vscode3.Range(
+      new vscode3.Position(parseResult.startLine, 0),
+      new vscode3.Position(parseResult.endLine, document.lineAt(parseResult.endLine).text.length)
     );
     edit.replace(document.uri, range, rendered);
     i = parseResult.endLine;
     count++;
   }
   if (count === 0) {
-    vscode2.window.showInformationMessage("No docstrings found in file.");
+    vscode3.window.showInformationMessage("No docstrings found in file.");
     return;
   }
-  await vscode2.workspace.applyEdit(edit);
+  await vscode3.workspace.applyEdit(edit);
 }
 
 // src/onSave.ts
-var vscode3 = __toESM(require("vscode"));
+var vscode4 = __toESM(require("vscode"));
 function registerOnSaveHandler(context) {
   context.subscriptions.push(
-    vscode3.workspace.onDidSaveTextDocument(async (document) => {
+    vscode4.workspace.onDidSaveTextDocument(async (document) => {
       if (document.languageId !== "python") return;
-      const enabled = vscode3.workspace.getConfiguration("docstringGenerator").get("onSave.enable", false);
+      const enabled = vscode4.workspace.getConfiguration("docstringGenerator").get("onSave.enable", false);
       if (!enabled) return;
       const lines = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
       const insertions = generateFileInsertions(lines);
       if (insertions.length === 0) return;
-      const edit = new vscode3.WorkspaceEdit();
+      const edit = new vscode4.WorkspaceEdit();
       for (const ins of insertions) {
-        const insertPos = new vscode3.Position(ins.afterLine + 1, 0);
+        const insertPos = new vscode4.Position(ins.afterLine + 1, 0);
         edit.insert(document.uri, insertPos, ins.text + "\n");
       }
-      await vscode3.workspace.applyEdit(edit);
+      await vscode4.workspace.applyEdit(edit);
     })
   );
 }
 
 // src/trigger.ts
-var vscode4 = __toESM(require("vscode"));
+var vscode5 = __toESM(require("vscode"));
 function docLines2(document) {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
 }
@@ -910,36 +940,36 @@ var DocstringTrigger = class {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
       snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetBody = `\${1:_summary_}
+      snippetBody = `\${1:_summary_}.
 ${indent}${quoteChar}`;
     } else {
       return [];
     }
     const bodyLines = snippetBody.split("\n");
     const fullSnippet = indent + quoteChar + bodyLines[0] + "\n" + bodyLines.slice(1).map((l) => l === "" ? "" : indent + l).join("\n");
-    const lineStart = new vscode4.Position(position.line, 0);
-    const range = new vscode4.Range(lineStart, position.with(void 0, lineText.length));
-    return [new vscode4.InlineCompletionItem(new vscode4.SnippetString(fullSnippet), range)];
+    const lineStart = new vscode5.Position(position.line, 0);
+    const range = new vscode5.Range(lineStart, position.with(void 0, lineText.length));
+    return [new vscode5.InlineCompletionItem(new vscode5.SnippetString(fullSnippet), range)];
   }
 };
 
 // src/extension.ts
 function activate(context) {
   context.subscriptions.push(
-    vscode5.languages.registerInlineCompletionItemProvider(
+    vscode6.languages.registerInlineCompletionItemProvider(
       { language: "python" },
       new DocstringTrigger()
     ),
-    vscode5.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
-    vscode5.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
-    vscode5.commands.registerTextEditorCommand("docstringGenerator.update", update),
-    vscode5.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
-    vscode5.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
-    vscode5.commands.registerTextEditorCommand(
+    vscode6.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
+    vscode6.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
+    vscode6.commands.registerTextEditorCommand("docstringGenerator.update", update),
+    vscode6.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
+    vscode6.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
+    vscode6.commands.registerTextEditorCommand(
       "docstringGenerator.convertFileFormat",
       convertFileFormat
     ),
-    vscode5.languages.registerCodeActionsProvider(
+    vscode6.languages.registerCodeActionsProvider(
       { language: "python" },
       new GenerateDocstringActionProvider(),
       { providedCodeActionKinds: GenerateDocstringActionProvider.providedKinds }

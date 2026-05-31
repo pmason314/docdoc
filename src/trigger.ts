@@ -38,7 +38,7 @@ export class DocstringTrigger implements vscode.InlineCompletionItemProvider {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
       snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetBody = `\${1:_summary_}\n${indent}${quoteChar}`;
+      snippetBody = `\${1:_summary_}.\n${indent}${quoteChar}`;
     } else {
       return [];
     }
