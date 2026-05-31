@@ -58,5 +58,5 @@ jobs:
         with:
           tag_name: "v${{ env.VERSION }}"
           name: "v${{ env.VERSION }}"
-          files: "python-docstring-generator-${{ env.VERSION }}.vsix"
+          files: "docdoc-${{ env.VERSION }}.vsix"
           generate_release_notes: true
