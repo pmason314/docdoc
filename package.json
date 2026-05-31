@@ -147,7 +147,7 @@
         },
         "docdoc.generateModuleDocstring": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "When running the  'Generate All Docstrings for File' command, also insert a module-level docstring if the file does not already have one."
         },
         "docdoc.placeholders.summary": {

@@ -27,6 +27,9 @@ def func_with_params(a, b=2, *args, **kwargs) -> int:
 
     Returns:
         int: _description_
+
+    Raises:
+        ValueError: _description_
     """
     if kwargs.get("error"):
         raise ValueError("bad")
@@ -76,6 +79,9 @@ def raises_func():
 
     Returns:
         _description_
+
+    Raises:
+        RuntimeError: _description_
     """
     raise RuntimeError("oops")
 

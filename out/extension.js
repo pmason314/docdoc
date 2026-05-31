@@ -380,6 +380,35 @@ function shouldSkipReturn(sig, mode) {
   if (mode === "always") return false;
   return sig.returnAnnotation === null || sig.returnAnnotation === "None";
 }
+function detectRaises(lines, defLine, bodyStartLine) {
+  const defText = lines[defLine] ?? "";
+  const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1].length;
+  const nestedStack = [];
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  const RAISE_RE = /^\s*raise\s+((?:\w+\.)*[A-Z]\w*)/;
+  for (let i = bodyStartLine; i < lines.length && i < bodyStartLine + 500; i++) {
+    const text = lines[i];
+    const trimmed = text.trim();
+    if (!trimmed) continue;
+    const lineIndent = (text.match(/^(\s*)/) ?? ["", ""])[1].length;
+    if (lineIndent <= defIndent) break;
+    while (nestedStack.length > 0 && lineIndent <= nestedStack[nestedStack.length - 1]) {
+      nestedStack.pop();
+    }
+    if (/^(?:async\s+)?def\s|^class\s/.test(trimmed)) {
+      nestedStack.push(lineIndent);
+      continue;
+    }
+    if (nestedStack.length > 0) continue;
+    const m = RAISE_RE.exec(text);
+    if (m && !seen.has(m[1])) {
+      seen.add(m[1]);
+      result.push(m[1]);
+    }
+  }
+  return result;
+}
 function buildGoogleDocstring(sig, _indent, quoteChar, opts = {}) {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -387,7 +416,8 @@ function buildGoogleDocstring(sig, _indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   const paramIndent = "    ";
   let n = 1;
@@ -415,6 +445,15 @@ Args:
     out += `${paramIndent}${typePrefix}\${${n++}:${descPlaceholder}}
 `;
   }
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}Raises:
+`;
+    for (const r of raises) {
+      out += `${paramIndent}${r}: \${${n++}:${descPlaceholder}}
+`;
+    }
+  }
   out += quoteChar;
   return out.replace(/^[ \t]+$/gm, "");
 }
@@ -425,7 +464,8 @@ function buildGoogleDocstringText(sig, indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   const paramIndent = indent + "    ";
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -451,6 +491,15 @@ ${indent}Args:
     const typePrefix = sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
     out += `${paramIndent}${typePrefix}${descPlaceholder}
 `;
+  }
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}Raises:
+`;
+    for (const r of raises) {
+      out += `${paramIndent}${r}: ${descPlaceholder}
+`;
+    }
   }
   out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
@@ -511,8 +560,10 @@ function generateFileInsertions(lines, opts = {}) {
     const defIndent = (text.match(/^(\s*)/) ?? ["", ""])[1];
     const bodyIndent = defIndent + "    ";
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
+    const raises = detectRaises(lines, found.defLine, sigEndLine + 1);
     const docText = buildDocstringText(found.sig, bodyIndent, quoteChar, {
       isGenerator,
+      raises,
       ...opts
     });
     insertions.push({ afterLine: sigEndLine, text: docText });
@@ -655,7 +706,8 @@ function buildNumpyDocstring(sig, _indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   const paramIndent = "    ";
   let n = 1;
@@ -688,6 +740,17 @@ ${dashes}
     out += `${typeStr}${paramIndent}\${${n++}:${descPlaceholder}}
 `;
   }
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}Raises
+------
+`;
+    for (const r of raises) {
+      out += `${r}
+${paramIndent}\${${n++}:${descPlaceholder}}
+`;
+    }
+  }
   out += quoteChar;
   return out.replace(/^[ \t]+$/gm, "");
 }
@@ -698,7 +761,8 @@ function buildNumpyDocstringText(sig, indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   const paramIndent = indent + "    ";
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -730,6 +794,17 @@ ${indent}${dashes}
     out += `${typeStr}${paramIndent}${descPlaceholder}
 `;
   }
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}Raises
+${indent}------
+`;
+    for (const r of raises) {
+      out += `${indent}${r}
+${paramIndent}${descPlaceholder}
+`;
+    }
+  }
   out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
 }
@@ -740,7 +815,8 @@ function buildSphinxDocstring(sig, _indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   let n = 1;
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -769,6 +845,12 @@ function buildSphinxDocstring(sig, _indent, quoteChar, opts = {}) {
 `;
     }
   }
+  if (raises.length > 0) {
+    for (const r of raises) {
+      out += `:raises ${r}: \${${n++}:${descPlaceholder}}
+`;
+    }
+  }
   out += quoteChar;
   return out.replace(/^[ \t]+$/gm, "");
 }
@@ -779,7 +861,8 @@ function buildSphinxDocstringText(sig, indent, quoteChar, opts = {}) {
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
-    isGenerator = false
+    isGenerator = false,
+    raises = []
   } = opts;
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
   let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
@@ -804,6 +887,12 @@ function buildSphinxDocstringText(sig, indent, quoteChar, opts = {}) {
 `;
     if (sig.returnAnnotation && sig.returnAnnotation !== "None") {
       out += `${indent}:rtype: ${sig.returnAnnotation}
+`;
+    }
+  }
+  if (raises.length > 0) {
+    for (const r of raises) {
+      out += `${indent}:raises ${r}: ${descPlaceholder}
 `;
     }
   }
@@ -932,8 +1021,10 @@ async function generate(editor) {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
+  const raises = detectRaises(lines, defLine, sigEndLine + 1);
   const docText = buildDocstringText(sig, bodyIndent, opts.quoteChar, {
     isGenerator,
+    raises,
     ...opts
   });
   const edit = insertionEdit(document, sigEndLine, docText);
@@ -1120,7 +1211,8 @@ var DocstringTrigger = class {
     let snippetBody;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetBody = buildDocstring(found.sig, indent, quoteChar, { isGenerator, ...opts });
+      const raises = detectRaises(lines, found.defLine, position.line + 1);
+      snippetBody = buildDocstring(found.sig, indent, quoteChar, { isGenerator, raises, ...opts });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
       const summaryPeriod = opts.summaryPlaceholder.includes(".") ? "" : ".";
       snippetBody = `\${1:${opts.summaryPlaceholder}}${summaryPeriod}

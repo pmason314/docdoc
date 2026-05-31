@@ -289,6 +289,63 @@ function shouldSkipReturn(sig: ParsedSignature, mode: ReturnMode): boolean {
 }
 
 /**
+ * Scan the body of a function for `raise` statements and return the unique
+ * exception type names found.
+ *
+ * - Only raises at the function's own scope are returned; raises inside nested
+ *   `def` or `class` blocks are skipped.
+ * - Bare `raise` (re-raise with no argument) is skipped.
+ * - Raises of lowercase identifiers (likely local variables) are skipped.
+ * - Results are deduplicated and returned in order of first appearance.
+ */
+export function detectRaises(lines: string[], defLine: number, bodyStartLine: number): string[] {
+  const defText = lines[defLine] ?? "";
+  const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1].length;
+
+  // Stack of indent levels for nested def/class scopes we've entered
+  const nestedStack: number[] = [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  // Matches: raise ExceptionName, raise pkg.Exception, raise pkg.sub.Error(...)
+  // Requires the final component to start with uppercase (to skip bare lowercase variable raises).
+  const RAISE_RE = /^\s*raise\s+((?:\w+\.)*[A-Z]\w*)/;
+
+  for (let i = bodyStartLine; i < lines.length && i < bodyStartLine + 500; i++) {
+    const text = lines[i];
+    const trimmed = text.trim();
+    if (!trimmed) continue;
+
+    const lineIndent = (text.match(/^(\s*)/) ?? ["", ""])[1].length;
+
+    // Left the function body
+    if (lineIndent <= defIndent) break;
+
+    // Pop nested scopes we've exited (indent dropped back to or past their start)
+    while (nestedStack.length > 0 && lineIndent <= nestedStack[nestedStack.length - 1]) {
+      nestedStack.pop();
+    }
+
+    // Entering a nested def/class — push its indent level and skip the line
+    if (/^(?:async\s+)?def\s|^class\s/.test(trimmed)) {
+      nestedStack.push(lineIndent);
+      continue;
+    }
+
+    // Inside a nested scope — skip
+    if (nestedStack.length > 0) continue;
+
+    const m = RAISE_RE.exec(text);
+    if (m && !seen.has(m[1])) {
+      seen.add(m[1]);
+      result.push(m[1]);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Build a Google-style docstring as a raw VS Code snippet template string.
  *
  * VS Code normalizes inline-completion snippet indentation by prepending the
@@ -312,7 +369,7 @@ export function buildGoogleDocstring(
   sig: ParsedSignature,
   _indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -321,6 +378,7 @@ export function buildGoogleDocstring(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   // 0-based: VS Code adds the trigger line's indentation to every new line.
   const paramIndent = "    ";
@@ -349,6 +407,14 @@ export function buildGoogleDocstring(
     out += `${paramIndent}${typePrefix}\${${n++}:${descPlaceholder}}\n`;
   }
 
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}Raises:\n`;
+    for (const r of raises) {
+      out += `${paramIndent}${r}: \${${n++}:${descPlaceholder}}\n`;
+    }
+  }
+
   // Strip trailing whitespace from blank lines (VS Code indent-normalization adds
   // the trigger-line indent to every new line, including empty separator lines).
   // One-liner: no newline → closing quotes on same line (no indent needed).
@@ -362,7 +428,7 @@ export function buildGoogleDocstringText(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -371,6 +437,7 @@ export function buildGoogleDocstringText(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   const paramIndent = indent + "    ";
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -395,6 +462,14 @@ export function buildGoogleDocstringText(
     const typePrefix =
       sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}: ` : "";
     out += `${paramIndent}${typePrefix}${descPlaceholder}\n`;
+  }
+
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}Raises:\n`;
+    for (const r of raises) {
+      out += `${paramIndent}${r}: ${descPlaceholder}\n`;
+    }
   }
 
   // One-liner if no sections were added; otherwise close on its own line
@@ -496,8 +571,10 @@ export function generateFileInsertions(
     const bodyIndent = defIndent + "    ";
 
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
+    const raises = detectRaises(lines, found.defLine, sigEndLine + 1);
     const docText = buildDocstringText(found.sig, bodyIndent, quoteChar, {
       isGenerator,
+      raises,
       ...opts,
     });
 
@@ -763,7 +840,7 @@ export function buildNumpyDocstring(
   sig: ParsedSignature,
   _indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -772,6 +849,7 @@ export function buildNumpyDocstring(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   const paramIndent = "    ";
   let n = 1;
@@ -799,6 +877,14 @@ export function buildNumpyDocstring(
     out += `${typeStr}${paramIndent}\${${n++}:${descPlaceholder}}\n`;
   }
 
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}Raises\n------\n`;
+    for (const r of raises) {
+      out += `${r}\n${paramIndent}\${${n++}:${descPlaceholder}}\n`;
+    }
+  }
+
   out += quoteChar;
   return out.replace(/^[ \t]+$/gm, "");
 }
@@ -808,7 +894,7 @@ export function buildNumpyDocstringText(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -817,6 +903,7 @@ export function buildNumpyDocstringText(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   const paramIndent = indent + "    ";
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -845,6 +932,14 @@ export function buildNumpyDocstringText(
     out += `${typeStr}${paramIndent}${descPlaceholder}\n`;
   }
 
+  if (raises.length > 0) {
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}Raises\n${indent}------\n`;
+    for (const r of raises) {
+      out += `${indent}${r}\n${paramIndent}${descPlaceholder}\n`;
+    }
+  }
+
   out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
 }
@@ -866,7 +961,7 @@ export function buildSphinxDocstring(
   sig: ParsedSignature,
   _indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -875,6 +970,7 @@ export function buildSphinxDocstring(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   let n = 1;
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
@@ -901,6 +997,12 @@ export function buildSphinxDocstring(
     }
   }
 
+  if (raises.length > 0) {
+    for (const r of raises) {
+      out += `:raises ${r}: \${${n++}:${descPlaceholder}}\n`;
+    }
+  }
+
   out += quoteChar;
   return out.replace(/^[ \t]+$/gm, "");
 }
@@ -910,7 +1012,7 @@ export function buildSphinxDocstringText(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   const {
     includeTypes = DEFAULT_OPTIONS.includeTypes,
@@ -919,6 +1021,7 @@ export function buildSphinxDocstringText(
     summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
     isGenerator = false,
+    raises = [],
   } = opts;
   const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
   let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
@@ -944,6 +1047,12 @@ export function buildSphinxDocstringText(
     }
   }
 
+  if (raises.length > 0) {
+    for (const r of raises) {
+      out += `${indent}:raises ${r}: ${descPlaceholder}\n`;
+    }
+  }
+
   out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
   return out;
 }
@@ -956,7 +1065,7 @@ export function buildDocstring(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   switch (opts.format) {
     case "numpy":
@@ -976,7 +1085,7 @@ export function buildDocstringText(
   sig: ParsedSignature,
   indent: string,
   quoteChar: string,
-  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean; raises?: string[] } = {},
 ): string {
   switch (opts.format) {
     case "numpy":

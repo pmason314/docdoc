@@ -229,6 +229,18 @@ describe("buildGoogleDocstringText", () => {
     assert.ok(out.includes("x: TODO\n"));
     assert.ok(out.includes("str: TODO\n"));
   });
+
+  it("raises option emits Raises section", () => {
+    const out = buildGoogleDocstringText(
+      { kind: "def", name: "f", params: [], returnAnnotation: null },
+      "    ",
+      '"""',
+      { returnsMode: "non-none", raises: ["ValueError", "TypeError"] },
+    );
+    assert.ok(out.includes("    Raises:\n"));
+    assert.ok(out.includes("        ValueError: _description_\n"));
+    assert.ok(out.includes("        TypeError: _description_\n"));
+  });
 });
 
 // ---------------------------------------------------------------------------

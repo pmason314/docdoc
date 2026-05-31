@@ -98,6 +98,16 @@ describe("buildNumpyDocstringText", () => {
     );
     assert.ok(out.includes("Defaults to 42."));
   });
+
+  it("raises option emits Raises section with underline", () => {
+    const out = buildNumpyDocstringText(sig(), INDENT, Q, {
+      returnsMode: "non-none",
+      raises: ["ValueError", "TypeError"],
+    });
+    assert.ok(out.includes(`${INDENT}Raises\n${INDENT}------\n`));
+    assert.ok(out.includes(`${INDENT}ValueError\n`));
+    assert.ok(out.includes(`${INDENT}TypeError\n`));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -162,6 +172,15 @@ describe("buildSphinxDocstringText", () => {
     );
     assert.ok(out.includes("Defaults to 42."));
   });
+
+  it("raises option emits :raises: fields", () => {
+    const out = buildSphinxDocstringText(sig(), INDENT, Q, {
+      returnsMode: "non-none",
+      raises: ["ValueError", "TypeError"],
+    });
+    assert.ok(out.includes(`${INDENT}:raises ValueError:`));
+    assert.ok(out.includes(`${INDENT}:raises TypeError:`));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -211,6 +230,35 @@ describe("buildDocstring dispatch", () => {
       returnsMode: "non-none",
     });
     assert.ok(out.includes(`:param a:`));
+  });
+
+  it("raises passed through Google builder", () => {
+    const out = buildDocstringText(sig(), INDENT, Q, {
+      format: "google",
+      returnsMode: "non-none",
+      raises: ["ValueError"],
+    });
+    assert.ok(out.includes(`${INDENT}Raises:\n`));
+    assert.ok(out.includes(`${INDENT}    ValueError:`));
+  });
+
+  it("raises passed through NumPy builder", () => {
+    const out = buildDocstringText(sig(), INDENT, Q, {
+      format: "numpy",
+      returnsMode: "non-none",
+      raises: ["KeyError"],
+    });
+    assert.ok(out.includes(`${INDENT}Raises\n`));
+    assert.ok(out.includes(`${INDENT}KeyError\n`));
+  });
+
+  it("raises passed through Sphinx builder", () => {
+    const out = buildDocstringText(sig(), INDENT, Q, {
+      format: "sphinx",
+      returnsMode: "non-none",
+      raises: ["KeyError"],
+    });
+    assert.ok(out.includes(`${INDENT}:raises KeyError:`));
   });
 });
 

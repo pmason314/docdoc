@@ -127,10 +127,16 @@ Depends on Phase 5 (`format` config option).
 
 ---
 
-## Phase 7 — Advanced (lower priority)
+## Phase 7 — Advanced (lower priority) ✅
 
-- [ ] Raises detection: scan function body for `raise X` tokens → emit `Raises:` section.
-- [ ] `generateModuleDocstring` implementation (stub already in parser.ts).
+- [x] Raises detection: scan function body for `raise X` tokens → emit `Raises:` section.
+  - `detectRaises(lines, defLine, bodyStartLine)` in `parser.ts` — indentation-based scan, skips
+    nested `def`/`class` scopes, requires final component to start uppercase (skips bare re-raises
+    and lowercase variable raises), deduplicates results.
+  - `raises?: string[]` option added to all 6 builder functions (Google, NumPy, Sphinx × snippet+text).
+  - Wired into `generateFileInsertions`, `generate` command, and inline completion trigger.
+  - 18 new unit tests across `parser.test.ts`, `commands.test.ts`, `formats.test.ts`.
+- [x] `generateModuleDocstring` implementation (already done in Phase 5/6).
 
 ---
 

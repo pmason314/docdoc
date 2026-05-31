@@ -6,6 +6,7 @@ import {
   findSignatureFromLines,
   isModuleLevelLines,
   isGeneratorFunction,
+  detectRaises,
   buildGoogleDocstring,
   type Param,
   type ParsedSignature,
@@ -354,6 +355,98 @@ describe("isGeneratorFunction", () => {
   it("yield in method body (indented def)", () => {
     const lines = ["    def gen(self):", "        yield self.x"];
     assert.equal(isGeneratorFunction(lines, 0, 1), true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRaises
+// ---------------------------------------------------------------------------
+
+describe("detectRaises", () => {
+  it("returns empty array for an empty body", () => {
+    assert.deepEqual(detectRaises(["def foo():"], 0, 1), []);
+  });
+
+  it("captures a raised exception at direct body scope", () => {
+    const lines = ["def foo():", "    raise ValueError('bad')"];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["ValueError"]);
+  });
+
+  it("skips bare re-raise with no argument", () => {
+    const lines = ["def foo():", "    raise"];
+    assert.deepEqual(detectRaises(lines, 0, 1), []);
+  });
+
+  it("skips raise of lowercase variable", () => {
+    const lines = ["def foo():", "    raise exc"];
+    assert.deepEqual(detectRaises(lines, 0, 1), []);
+  });
+
+  it("skips raise inside a nested def", () => {
+    const lines = [
+      "def outer():",
+      "    def inner():",
+      "        raise ValueError",
+      "    raise TypeError",
+    ];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["TypeError"]);
+  });
+
+  it("skips raise inside a nested class", () => {
+    const lines = [
+      "def outer():",
+      "    class Inner:",
+      "        raise ValueError",
+      "    raise TypeError",
+    ];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["TypeError"]);
+  });
+
+  it("skips raise inside deeply nested scopes", () => {
+    const lines = [
+      "def outer():",
+      "    class Inner:",
+      "        def method(self):",
+      "            raise ValueError",
+      "    raise TypeError",
+    ];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["TypeError"]);
+  });
+
+  it("deduplicates repeated raises of the same exception", () => {
+    const lines = [
+      "def foo():",
+      "    if a:",
+      "        raise ValueError('a')",
+      "    if b:",
+      "        raise ValueError('b')",
+    ];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["ValueError"]);
+  });
+
+  it("returns multiple distinct exceptions in order of first appearance", () => {
+    const lines = [
+      "def foo():",
+      "    raise TypeError",
+      "    raise ValueError",
+      "    raise KeyError",
+    ];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["TypeError", "ValueError", "KeyError"]);
+  });
+
+  it("captures dotted exception names", () => {
+    const lines = ["def foo():", "    raise pkg.CustomError('msg')"];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["pkg.CustomError"]);
+  });
+
+  it("stops at next function at same indentation level", () => {
+    const lines = ["def foo():", "    raise ValueError", "def bar():", "    raise TypeError"];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["ValueError"]);
+  });
+
+  it("works for a method inside a class (indented def)", () => {
+    const lines = ["    def method(self):", "        raise NotImplementedError"];
+    assert.deepEqual(detectRaises(lines, 0, 1), ["NotImplementedError"]);
   });
 });
 

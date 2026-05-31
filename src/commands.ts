@@ -3,6 +3,7 @@ import {
   applyInsertions,
   buildDocstringText,
   buildUpdateText,
+  detectRaises,
   findSignatureFromLines,
   generateFileInsertions,
   hasDocstring,
@@ -74,8 +75,10 @@ export async function generate(editor: vscode.TextEditor): Promise<void> {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
+  const raises = detectRaises(lines, defLine, sigEndLine + 1);
   const docText = buildDocstringText(sig, bodyIndent, opts.quoteChar, {
     isGenerator,
+    raises,
     ...opts,
   });
 
