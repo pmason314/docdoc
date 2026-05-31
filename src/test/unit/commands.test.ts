@@ -56,14 +56,16 @@ describe("buildGoogleDocstringText", () => {
     return buildGoogleDocstringText(sig, INDENT, Q, opts);
   }
 
-  it("no params, no return — one-liner", () => {
+  it("no params, no return — includes Returns section", () => {
     const out = build({ kind: "def", name: "f", params: [], returnAnnotation: null });
-    assert.equal(out, `${INDENT}${Q}_summary_.${Q}`);
+    assert.ok(out.includes(`${INDENT}Returns:\n`));
+    assert.ok(out.endsWith(`${INDENT}${Q}`));
   });
 
-  it("None return — one-liner (return suppressed)", () => {
+  it("None return — includes Returns section", () => {
     const out = build({ kind: "def", name: "f", params: [], returnAnnotation: "None" });
-    assert.equal(out, `${INDENT}${Q}_summary_.${Q}`);
+    assert.ok(out.includes(`${INDENT}Returns:\n`));
+    assert.ok(out.endsWith(`${INDENT}${Q}`));
   });
 
   it("class — one-liner", () => {
@@ -177,14 +179,14 @@ describe("buildGoogleDocstringText", () => {
     assert.ok(out.includes("_description_"));
   });
 
-  it("returnsMode='non-none' emits Returns for unannotated, skips -> None", () => {
+  it("returnsMode='non-none' suppresses Returns when unannotated or -> None", () => {
     const outUnannotated = buildGoogleDocstringText(
       { kind: "def", name: "f", params: [], returnAnnotation: null },
       "    ",
       '"""',
       { returnsMode: "non-none" },
     );
-    assert.ok(outUnannotated.includes("Returns:"));
+    assert.ok(!outUnannotated.includes("Returns:"));
 
     const outNone = buildGoogleDocstringText(
       { kind: "def", name: "f", params: [], returnAnnotation: "None" },
@@ -294,6 +296,41 @@ describe("generateFileInsertions", () => {
     const lines = ["class Foo:", "    # def bar(self):", "    #     return 1"];
     const ins = generateFileInsertions(lines);
     assert.equal(ins.length, 1); // only the class, not the commented method
+  });
+
+  it("custom summaryPlaceholder and descPlaceholder appear in insertion text", () => {
+    const lines = ["def foo(x: int) -> str:", "    return str(x)"];
+    const ins = generateFileInsertions(lines, {
+      summaryPlaceholder: "TODO: summary",
+      descPlaceholder: "TODO: desc",
+    });
+    assert.equal(ins.length, 1);
+    assert.ok(ins[0].text.includes("TODO: summary"));
+    assert.ok(ins[0].text.includes("TODO: desc"));
+  });
+
+  it("includeTypes=false omits type hints in generated docstrings", () => {
+    const lines = ["def foo(x: int) -> str:", "    return str(x)"];
+    const ins = generateFileInsertions(lines, { includeTypes: false });
+    assert.equal(ins.length, 1);
+    assert.ok(!ins[0].text.includes("(int)"));
+    assert.ok(ins[0].text.includes("x: "));
+  });
+
+  it("generateModuleDocstring=true inserts module-level docstring at top", () => {
+    const lines = ["def foo():", "    return 1"];
+    const ins = generateFileInsertions(lines, { generateModuleDocstring: true });
+    // First insertion is the module docstring (afterLine: -1), second is the function
+    assert.ok(ins.length >= 2);
+    assert.equal(ins[0].afterLine, -1);
+    assert.ok(ins[0].text.includes('"""'));
+  });
+
+  it("generateModuleDocstring=true skips module docstring when file already has one", () => {
+    const lines = ['"""Module summary."""', "", "def foo():", "    return 1"];
+    const ins = generateFileInsertions(lines, { generateModuleDocstring: true });
+    // Only the function gets a docstring; no module-level insertion
+    assert.ok(ins.every((i) => i.afterLine !== -1));
   });
 });
 

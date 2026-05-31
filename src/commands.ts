@@ -127,6 +127,7 @@ export async function update(editor: vscode.TextEditor): Promise<void> {
     isGenerator,
     returnsMode: opts.returnsMode,
     descPlaceholder: opts.descPlaceholder,
+    includeTypes: opts.includeTypes,
   });
 
   if (!result) {
@@ -163,6 +164,7 @@ export async function updateFile(editor: vscode.TextEditor): Promise<void> {
       isGenerator,
       returnsMode: opts.returnsMode,
       descPlaceholder: opts.descPlaceholder,
+      includeTypes: opts.includeTypes,
     });
     if (!result) continue;
 

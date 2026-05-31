@@ -1,6 +1,6 @@
 {
-  "name": "python-docstring-generator",
-  "displayName": "Python Docstring Generator",
+  "name": "docdoc",
+  "displayName": "Docdoc - Python Docstring Generator",
   "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format..",
   "version": "0.1.0",
   "publisher": "pmason314",
@@ -32,79 +32,79 @@
   "contributes": {
     "commands": [
       {
-        "command": "docstringGenerator.generate",
+        "command": "docdoc.generate",
         "title": "Python: Generate Docstring"
       },
       {
-        "command": "docstringGenerator.generateFile",
-        "title": "Python: Generate Docstrings for File"
+        "command": "docdoc.generateFile",
+        "title": "Python: Generate All Docstrings for File"
       },
       {
-        "command": "docstringGenerator.update",
+        "command": "docdoc.update",
         "title": "Python: Update Docstring"
       },
       {
-        "command": "docstringGenerator.updateFile",
+        "command": "docdoc.updateFile",
         "title": "Python: Update All Docstrings in File"
       },
       {
-        "command": "docstringGenerator.convertFormat",
+        "command": "docdoc.convertFormat",
         "title": "Python: Convert Docstring Format"
       },
       {
-        "command": "docstringGenerator.convertFileFormat",
+        "command": "docdoc.convertFileFormat",
         "title": "Python: Convert All Docstrings in File"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "docstringGenerator.generate",
+          "command": "docdoc.generate",
           "when": "editorLangId == python"
         },
         {
-          "command": "docstringGenerator.generateFile",
+          "command": "docdoc.generateFile",
           "when": "editorLangId == python"
         },
         {
-          "command": "docstringGenerator.update",
+          "command": "docdoc.update",
           "when": "editorLangId == python"
         },
         {
-          "command": "docstringGenerator.updateFile",
+          "command": "docdoc.updateFile",
           "when": "editorLangId == python"
         },
         {
-          "command": "docstringGenerator.convertFormat",
+          "command": "docdoc.convertFormat",
           "when": "editorLangId == python"
         },
         {
-          "command": "docstringGenerator.convertFileFormat",
+          "command": "docdoc.convertFileFormat",
           "when": "editorLangId == python"
         }
       ]
     },
     "configuration": {
-      "title": "Python Docstring Generator",
+      "title": "Docdoc - Python Docstring Generator",
       "properties": {
-        "docstringGenerator.format": {
+        "docdoc.format": {
           "type": "string",
-          "default": "",
+          "default": "auto",
           "enum": [
-            "",
+            "auto",
             "google",
             "numpy",
             "sphinx"
           ],
           "enumDescriptions": [
-            "Auto-detect from pyproject.toml; falls back to Google",
+            "Auto-detect from pyproject.toml; default to Google style if no docstring setting found",
             "Google style",
             "NumPy style",
             "Sphinx / reStructuredText style"
           ],
-          "description": "Docstring format. If empty, auto-detected from pyproject.toml; falls back to Google."
+          "description": "Python docstring format."
         },
-        "docstringGenerator.quoteStyle": {
+        "docdoc.quoteStyle": {
           "type": "string",
           "default": "double",
           "enum": [
@@ -117,50 +117,48 @@
           ],
           "description": "Quote style for generated docstrings."
         },
-        "docstringGenerator.onSave.enable": {
+        "docdoc.onSave.enable": {
           "type": "boolean",
           "default": false,
           "description": "Generate docstrings for all undocumented functions and classes on file save."
         },
-        "docstringGenerator.includeTypesFromAnnotations": {
+        "docdoc.includeTypesFromAnnotations": {
           "type": "boolean",
           "default": true,
-          "description": "Include type info in the docstring when a type annotation is present in the signature."
+          "description": "Include data type info in the docstring when a type annotation is present in the function or class signature."
         },
-        "docstringGenerator.includeDefaults": {
+        "docdoc.includeDefaults": {
           "type": "boolean",
           "default": true,
-          "description": "Append 'Defaults to X.' in the parameter description when a default value is present."
+          "description": "Append 'Defaults to X.' in the parameter description when a default parameter value is present."
         },
-        "docstringGenerator.returns.mode": {
+        "docdoc.returns.mode": {
           "type": "string",
-          "default": "when-annotated",
+          "default": "always",
           "enum": [
-            "when-annotated",
-            "non-none",
-            "always"
+            "always",
+            "non-none"
           ],
           "enumDescriptions": [
-            "Emit Returns only when a non-None return annotation is present.",
-            "Emit Returns for any non-None annotation; skip if unannotated or -> None.",
-            "Always emit Returns, even for unannotated functions and -> None."
+            "Always include a Returns or Yields section.",
+            "Only include a Returns section when the function has a non-None return annotation."
           ],
-          "description": "When to emit a Returns (or Yields) section."
+          "description": "When to include a Returns (or Yields) section in the docstring."
         },
-        "docstringGenerator.generateModuleDocstring": {
+        "docdoc.generateModuleDocstring": {
           "type": "boolean",
           "default": false,
-          "description": "When running Generate Docstrings for File, also insert a module-level docstring if the file does not already have one."
+          "description": "When running the  'Generate All Docstrings for File' command, also insert a module-level docstring if the file does not already have one."
         },
-        "docstringGenerator.placeholders.summary": {
+        "docdoc.placeholders.summary": {
           "type": "string",
           "default": "_summary_",
-          "description": "Placeholder text for the summary line."
+          "description": "Placeholder text for the docstring's summary line."
         },
-        "docstringGenerator.placeholders.description": {
+        "docdoc.placeholders.description": {
           "type": "string",
           "default": "_description_",
-          "description": "Placeholder text for parameter and return descriptions."
+          "description": "Placeholder text for the docstring's parameter and return descriptions."
         }
       }
     }

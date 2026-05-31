@@ -8,7 +8,11 @@ if TYPE_CHECKING:
 
 
 def func_no_params():
-    """_summary_."""
+    """_summary_.
+
+    Returns:
+        _description_
+    """
     return 42
 
 
@@ -47,6 +51,9 @@ async def async_func(x):
 
     Args:
         x: _description_
+
+    Returns:
+        _description_
     """
     return x
 
@@ -56,13 +63,20 @@ def generator_func(n):
 
     Args:
         n: _description_
+
+    Yields:
+        _description_
     """
     for i in range(n):
         yield i
 
 
 def raises_func():
-    """_summary_."""
+    """_summary_.
+
+    Returns:
+        _description_
+    """
     raise RuntimeError("oops")
 
 
@@ -73,6 +87,9 @@ def kw_only(a, *, b, c=3):
         a: _description_
         b: _description_
         c: _description_. Defaults to 3.
+
+    Returns:
+        _description_
     """
     return a + b + c
 
@@ -82,12 +99,18 @@ def nested_example(a):
 
     Args:
         a: _description_
+
+    Returns:
+        _description_
     """
     def inner(b):
         """_summary_.
 
         Args:
             b: _description_
+
+        Returns:
+            _description_
         """
         return a + b
 
@@ -125,6 +148,9 @@ class SimpleClass:
         Args:
             x: _description_
             y: _description_. Defaults to 1.
+
+        Returns:
+            _description_
         """
         self.x = x
         self.y = y
@@ -134,6 +160,9 @@ class SimpleClass:
 
         Args:
             z: _description_
+
+        Returns:
+            _description_
         """
         return self.x + z
 
@@ -146,6 +175,9 @@ class ClassWithClassMethod:
 
         Args:
             v: _description_
+
+        Returns:
+            _description_
         """
         return v
 
@@ -155,6 +187,9 @@ class ClassWithClassMethod:
 
         Args:
             v: _description_
+
+        Returns:
+            _description_
         """
         return v * 2
 
@@ -166,12 +201,19 @@ class WithProperty:
 
         Args:
             val: _description_
+
+        Returns:
+            _description_
         """
         self._v = val
 
     @property
     def value(self):
-        """_summary_."""
+        """_summary_.
+
+        Returns:
+            _description_
+        """
         return self._v
 
     @value.setter
@@ -180,6 +222,9 @@ class WithProperty:
 
         Args:
             v: _description_
+
+        Returns:
+            _description_
         """
         self._v = v
 
@@ -187,7 +232,11 @@ class WithProperty:
 class ContextManager:
     """_summary_."""
     def __enter__(self):
-        """_summary_."""
+        """_summary_.
+
+        Returns:
+            _description_
+        """
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -197,6 +246,9 @@ class ContextManager:
             exc_type: _description_
             exc: _description_
             tb: _description_
+
+        Returns:
+            _description_
         """
         return False
 
@@ -208,7 +260,11 @@ class DC:
     y: str = ""
 
     def method(self):
-        """_summary_."""
+        """_summary_.
+
+        Returns:
+            _description_
+        """
         return self.x
 
 
@@ -217,6 +273,9 @@ def decorator(func: Callable):
 
     Args:
         func (Callable): _description_
+
+    Returns:
+        _description_
     """
     def wrapper(*args, **kwargs):
         """_summary_.
@@ -224,6 +283,9 @@ def decorator(func: Callable):
         Args:
             *args: _description_
             **kwargs: _description_
+
+        Returns:
+            _description_
         """
         return func(*args, **kwargs)
 
@@ -237,12 +299,19 @@ def decorated(a, b):
     Args:
         a: _description_
         b: _description_
+
+    Returns:
+        _description_
     """
     return a + b
 
 
 def try_except_reraise():
-    """_summary_."""
+    """_summary_.
+
+    Returns:
+        _description_
+    """
     try:
         1 / 0
     except ZeroDivisionError:

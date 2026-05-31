@@ -205,9 +205,10 @@ var CLASS_RE = /^(\s*)class\s+(\w+)/;
 var DECORATOR_RE = /^\s*@/;
 var DEFAULT_OPTIONS = {
   quoteChar: '"""',
+  format: "auto",
   includeTypes: true,
   includeDefaults: true,
-  returnsMode: "when-annotated",
+  returnsMode: "always",
   summaryPlaceholder: "_summary_",
   descPlaceholder: "_description_",
   generateModuleDocstring: false
@@ -376,15 +377,8 @@ function isGeneratorFunction(lines, defLine, bodyStartLine) {
 }
 function shouldSkipReturn(sig, mode) {
   if (sig.kind !== "def") return true;
-  switch (mode) {
-    case "always":
-      return false;
-    case "non-none":
-      return sig.returnAnnotation === "None";
-    case "when-annotated":
-    default:
-      return sig.returnAnnotation === null || sig.returnAnnotation === "None";
-  }
+  if (mode === "always") return false;
+  return sig.returnAnnotation === null || sig.returnAnnotation === "None";
 }
 function buildGoogleDocstring(sig, _indent, quoteChar, opts = {}) {
   const {
@@ -529,14 +523,15 @@ function mergeDocstring(sig, existing, opts = {}) {
   const {
     isGenerator = false,
     returnsMode = DEFAULT_OPTIONS.returnsMode,
-    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    includeTypes = DEFAULT_OPTIONS.includeTypes
   } = opts;
   const existingByName = new Map(existing.params.map((p) => [p.name, p]));
   const newParams = sig.params.map((p) => {
     const found = existingByName.get(p.name);
     return {
       name: p.name,
-      typehint: p.annotation ?? null,
+      typehint: includeTypes ? p.annotation ?? null : null,
       description: found?.description ?? descPlaceholder
     };
   });
@@ -674,7 +669,7 @@ var GenerateDocstringActionProvider = class {
         vscode.CodeActionKind.QuickFix
       );
       action.command = {
-        command: "docstringGenerator.generate",
+        command: "docdoc.generate",
         title: "Generate docstring",
         arguments: [{ line: i }]
       };
@@ -691,11 +686,12 @@ var vscode3 = __toESM(require("vscode"));
 // src/config.ts
 var vscode2 = __toESM(require("vscode"));
 function readConfig(resource) {
-  const cfg = vscode2.workspace.getConfiguration("docstringGenerator", resource);
+  const cfg = vscode2.workspace.getConfiguration("docdoc", resource);
   const quoteStyle = cfg.get("quoteStyle", "double");
   const quoteChar = quoteStyle === "single" ? "'''" : '"""';
   return {
     quoteChar,
+    format: cfg.get("format", DEFAULT_OPTIONS.format),
     includeTypes: cfg.get("includeTypesFromAnnotations", DEFAULT_OPTIONS.includeTypes),
     includeDefaults: cfg.get("includeDefaults", DEFAULT_OPTIONS.includeDefaults),
     returnsMode: cfg.get("returns.mode", DEFAULT_OPTIONS.returnsMode),
@@ -791,7 +787,8 @@ async function update(editor) {
   const result = buildUpdateText(lines, found.defLine, {
     isGenerator,
     returnsMode: opts.returnsMode,
-    descPlaceholder: opts.descPlaceholder
+    descPlaceholder: opts.descPlaceholder,
+    includeTypes: opts.includeTypes
   });
   if (!result) {
     vscode3.window.showInformationMessage("No docstring found to update.");
@@ -818,7 +815,8 @@ async function updateFile(editor) {
     const result = buildUpdateText(lines, i, {
       isGenerator,
       returnsMode: opts.returnsMode,
-      descPlaceholder: opts.descPlaceholder
+      descPlaceholder: opts.descPlaceholder,
+      includeTypes: opts.includeTypes
     });
     if (!result) continue;
     const range = new vscode3.Range(
@@ -904,10 +902,11 @@ function registerOnSaveHandler(context) {
   context.subscriptions.push(
     vscode4.workspace.onDidSaveTextDocument(async (document) => {
       if (document.languageId !== "python") return;
-      const enabled = vscode4.workspace.getConfiguration("docstringGenerator").get("onSave.enable", false);
-      if (!enabled) return;
+      const opts = readConfig(document.uri);
+      if (!vscode4.workspace.getConfiguration("docdoc", document.uri).get("onSave.enable", false))
+        return;
       const lines = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
-      const insertions = generateFileInsertions(lines);
+      const insertions = generateFileInsertions(lines, opts);
       if (insertions.length === 0) return;
       const edit = new vscode4.WorkspaceEdit();
       for (const ins of insertions) {
@@ -935,12 +934,14 @@ var DocstringTrigger = class {
     const quoteChar = tripleQuoteMatch[2];
     const lines = docLines2(document);
     const found = findSignatureFromLines(lines, position.line - 1);
+    const opts = readConfig(document.uri);
     let snippetBody;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
+      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator, ...opts });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetBody = `\${1:_summary_}.
+      const summaryPeriod = opts.summaryPlaceholder.includes(".") ? "" : ".";
+      snippetBody = `\${1:${opts.summaryPlaceholder}}${summaryPeriod}
 ${indent}${quoteChar}`;
     } else {
       return [];
@@ -960,13 +961,13 @@ function activate(context) {
       { language: "python" },
       new DocstringTrigger()
     ),
-    vscode6.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
-    vscode6.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
-    vscode6.commands.registerTextEditorCommand("docstringGenerator.update", update),
-    vscode6.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
-    vscode6.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
+    vscode6.commands.registerTextEditorCommand("docdoc.generate", generate),
+    vscode6.commands.registerTextEditorCommand("docdoc.generateFile", generateFile),
+    vscode6.commands.registerTextEditorCommand("docdoc.update", update),
+    vscode6.commands.registerTextEditorCommand("docdoc.updateFile", updateFile),
+    vscode6.commands.registerTextEditorCommand("docdoc.convertFormat", convert),
     vscode6.commands.registerTextEditorCommand(
-      "docstringGenerator.convertFileFormat",
+      "docdoc.convertFileFormat",
       convertFileFormat
     ),
     vscode6.languages.registerCodeActionsProvider(

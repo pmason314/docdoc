@@ -25,7 +25,7 @@ export class GenerateDocstringActionProvider implements vscode.CodeActionProvide
         vscode.CodeActionKind.QuickFix,
       );
       action.command = {
-        command: "docstringGenerator.generate",
+        command: "docdoc.generate",
         title: "Generate docstring",
         arguments: [{ line: i }],
       };

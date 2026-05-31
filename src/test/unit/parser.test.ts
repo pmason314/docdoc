@@ -407,23 +407,21 @@ describe("buildGoogleDocstring", () => {
       returnAnnotation: null,
     });
     assert.ok(out.includes("_summary_"));
-    // One-liner: closing quotes directly after summary, no newline
-    assert.ok(out.endsWith(Q));
+    assert.ok(out.includes("Returns:"));
     assert.ok(!out.includes("Args:"));
-    assert.ok(!out.includes("Returns:"));
   });
 
-  it("None return annotation is suppressed", () => {
+  it("None return annotation — Returns section still emitted", () => {
     const out = build({
       kind: "def",
       name: "f",
       params: [],
       returnAnnotation: "None",
     });
-    assert.ok(!out.includes("Returns:"));
+    assert.ok(out.includes("Returns:"));
   });
 
-  it("with params but no return — Args section, no Returns", () => {
+  it("with params but no return annotation — Args and Returns sections", () => {
     const out = build({
       kind: "def",
       name: "f",
@@ -432,7 +430,7 @@ describe("buildGoogleDocstring", () => {
     });
     assert.ok(out.includes("Args:"));
     assert.ok(out.includes("a (int):"));
-    assert.ok(!out.includes("Returns:"));
+    assert.ok(out.includes("Returns:"));
   });
 
   it("with return but no params — Returns section, no Args", () => {

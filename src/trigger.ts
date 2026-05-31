@@ -5,6 +5,7 @@ import {
   isGeneratorFunction,
   isModuleLevelLines,
 } from "./parser";
+import { readConfig } from "./config";
 
 function docLines(document: vscode.TextDocument): string[] {
   return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
@@ -32,13 +33,15 @@ export class DocstringTrigger implements vscode.InlineCompletionItemProvider {
 
     const lines = docLines(document);
     const found = findSignatureFromLines(lines, position.line - 1);
+    const opts = readConfig(document.uri);
 
     let snippetBody: string;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator });
+      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator, ...opts });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
-      snippetBody = `\${1:_summary_}.\n${indent}${quoteChar}`;
+      const summaryPeriod = opts.summaryPlaceholder.includes(".") ? "" : ".";
+      snippetBody = `\${1:${opts.summaryPlaceholder}}${summaryPeriod}\n${indent}${quoteChar}`;
     } else {
       return [];
     }

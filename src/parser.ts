@@ -12,11 +12,14 @@ export const DECORATOR_RE = /^\s*@/;
 // Config types (pure, no vscode dependency)
 // ---------------------------------------------------------------------------
 
-export type ReturnMode = "when-annotated" | "non-none" | "always";
+export type ReturnMode = "non-none" | "always";
+export type DocstringFormat = "auto" | "google" | "numpy" | "sphinx";
 
 export interface DocstringOptions {
   /** `'"""'` or `"'''"` derived from quoteStyle config. */
   quoteChar: string;
+  /** Docstring format. `"auto"` detects from pyproject.toml; falls back to Google. */
+  format: DocstringFormat;
   /** Include `(type)` in Args entries when annotation is present. */
   includeTypes: boolean;
   /** Append `Defaults to X.` in param descriptions when a default is present. */
@@ -33,9 +36,10 @@ export interface DocstringOptions {
 
 export const DEFAULT_OPTIONS: DocstringOptions = {
   quoteChar: '"""',
+  format: "auto",
   includeTypes: true,
   includeDefaults: true,
-  returnsMode: "when-annotated",
+  returnsMode: "always",
   summaryPlaceholder: "_summary_",
   descPlaceholder: "_description_",
   generateModuleDocstring: false,
@@ -279,15 +283,9 @@ export function isGeneratorFunction(
 /** Returns true when the Returns/Yields section should be omitted for `sig`. */
 function shouldSkipReturn(sig: ParsedSignature, mode: ReturnMode): boolean {
   if (sig.kind !== "def") return true;
-  switch (mode) {
-    case "always":
-      return false;
-    case "non-none":
-      return sig.returnAnnotation === "None";
-    case "when-annotated":
-    default:
-      return sig.returnAnnotation === null || sig.returnAnnotation === "None";
-  }
+  if (mode === "always") return false;
+  // "non-none": emit only when a non-None annotation is present
+  return sig.returnAnnotation === null || sig.returnAnnotation === "None";
 }
 
 /**
@@ -531,10 +529,12 @@ export function applyInsertions(lines: string[], insertions: DocstringInsertion[
 export interface MergeOpts {
   /** Treat the function as a generator (Yields instead of Returns). Default: false. */
   isGenerator?: boolean;
-  /** When to emit a Returns / Yields section. Default: `"when-annotated"`. */
+  /** When to emit a Returns / Yields section. Default: `"always"`. */
   returnsMode?: ReturnMode;
   /** Placeholder for new parameter / return descriptions. Default: `"_description_"`. */
   descPlaceholder?: string;
+  /** Include type annotations in Args entries. Default: `true`. */
+  includeTypes?: boolean;
 }
 
 /**
@@ -556,6 +556,7 @@ export function mergeDocstring(
     isGenerator = false,
     returnsMode = DEFAULT_OPTIONS.returnsMode,
     descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
   } = opts;
 
   const existingByName = new Map(existing.params.map((p) => [p.name, p]));
@@ -564,7 +565,7 @@ export function mergeDocstring(
     const found = existingByName.get(p.name);
     return {
       name: p.name,
-      typehint: p.annotation ?? null,
+      typehint: includeTypes ? (p.annotation ?? null) : null,
       description: found?.description ?? descPlaceholder,
     };
   });

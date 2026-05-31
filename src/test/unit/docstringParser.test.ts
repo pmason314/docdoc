@@ -427,7 +427,7 @@ describe("mergeDocstring", () => {
     assert.equal(merged.returns.description, "the old result");
   });
 
-  it("return suppressed when sig has no return annotation", () => {
+  it("return emitted when sig has no return annotation (always mode)", () => {
     const existing = existingDoc({
       returns: { typehint: "str", description: "old desc" },
     });
@@ -438,10 +438,12 @@ describe("mergeDocstring", () => {
       returnAnnotation: null,
     };
     const merged = mergeDocstring(sig, existing);
-    assert.equal(merged.returns, null);
+    assert.ok(merged.returns !== null);
+    assert.equal(merged.returns!.typehint, null);
+    assert.equal(merged.returns!.description, "old desc");
   });
 
-  it("return suppressed when sig returns None", () => {
+  it("return emitted when sig returns None (always mode)", () => {
     const existing = existingDoc({ returns: { typehint: "str", description: "old" } });
     const sig: ParsedSignature = {
       kind: "def",
@@ -449,7 +451,9 @@ describe("mergeDocstring", () => {
       params: [],
       returnAnnotation: "None",
     };
-    assert.equal(mergeDocstring(sig, existing).returns, null);
+    const merged = mergeDocstring(sig, existing);
+    assert.ok(merged.returns !== null);
+    assert.equal(merged.returns!.typehint, "None");
   });
 
   it("isGenerator: emits yields, not returns", () => {
@@ -499,6 +503,28 @@ describe("mergeDocstring", () => {
     const merged = mergeDocstring(sigAB, existing);
     assert.equal(merged.params[0].typehint, "int");
     assert.equal(merged.params[0].description, "old desc");
+  });
+
+  it("includeTypes=false strips type hints from all params", () => {
+    const existing = existingDoc({
+      params: [
+        { name: "a", typehint: "int", description: "desc a" },
+        { name: "b", typehint: "str", description: "desc b" },
+      ],
+    });
+    const merged = mergeDocstring(sigAB, existing, { includeTypes: false });
+    assert.equal(merged.params[0].typehint, null);
+    assert.equal(merged.params[1].typehint, null);
+    // descriptions are preserved
+    assert.equal(merged.params[0].description, "desc a");
+    assert.equal(merged.params[1].description, "desc b");
+  });
+
+  it("includeTypes=false on new params: typehint not set for new params", () => {
+    const existing = existingDoc({ params: [] });
+    const merged = mergeDocstring(sigAB, existing, { includeTypes: false });
+    assert.equal(merged.params[0].typehint, null);
+    assert.equal(merged.params[1].typehint, null);
   });
 });
 
@@ -701,5 +727,24 @@ describe("buildUpdateText", () => {
     assert.equal(result.endLine, 1);
     assert.ok(result.text.includes("Args:"));
     assert.ok(result.text.includes("a (int):"));
+  });
+
+  it("includeTypes=false strips type hints in updated docstring", () => {
+    const lines = [
+      "def foo(a: int, b: str) -> None:",
+      '    """_summary_',
+      "",
+      "    Args:",
+      "        a (int): the number",
+      "        b (str): the string",
+      '    """',
+      "    pass",
+    ];
+    const result = buildUpdateText(lines, 0, { includeTypes: false });
+    assert.ok(result);
+    assert.ok(result.text.includes("a: the number"));
+    assert.ok(result.text.includes("b: the string"));
+    assert.ok(!result.text.includes("(int)"));
+    assert.ok(!result.text.includes("(str)"));
   });
 });

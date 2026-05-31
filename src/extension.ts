@@ -11,13 +11,13 @@ export function activate(context: vscode.ExtensionContext): void {
       new DocstringTrigger(),
     ),
 
-    vscode.commands.registerTextEditorCommand("docstringGenerator.generate", generate),
-    vscode.commands.registerTextEditorCommand("docstringGenerator.generateFile", generateFile),
-    vscode.commands.registerTextEditorCommand("docstringGenerator.update", update),
-    vscode.commands.registerTextEditorCommand("docstringGenerator.updateFile", updateFile),
-    vscode.commands.registerTextEditorCommand("docstringGenerator.convertFormat", convert),
+    vscode.commands.registerTextEditorCommand("docdoc.generate", generate),
+    vscode.commands.registerTextEditorCommand("docdoc.generateFile", generateFile),
+    vscode.commands.registerTextEditorCommand("docdoc.update", update),
+    vscode.commands.registerTextEditorCommand("docdoc.updateFile", updateFile),
+    vscode.commands.registerTextEditorCommand("docdoc.convertFormat", convert),
     vscode.commands.registerTextEditorCommand(
-      "docstringGenerator.convertFileFormat",
+      "docdoc.convertFileFormat",
       convertFileFormat,
     ),
 
