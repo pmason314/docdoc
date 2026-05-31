@@ -88,31 +88,42 @@ Depends on `generateFile` from Phase 2.
 
 ---
 
-## Phase 5 — Config Integration
+## Phase 5 — Config Integration ✅
 
 Wire up all the settings declared in `package.json`. Applies retroactively to all earlier phases.
 
-- [ ] **`src/config.ts`** — typed wrapper around `vscode.workspace.getConfiguration` returning a
+- [x] **`src/config.ts`** — typed wrapper around `vscode.workspace.getConfiguration` returning a
   `DocstringOptions` struct.
-- [ ] Options to wire: `format`, `quoteStyle`, `includeTypesFromAnnotations`, `includeDefaults`,
+- [x] Options wired: `format`, `quoteStyle`, `includeTypesFromAnnotations`, `includeDefaults`,
   `returns.mode`, `placeholders.summary`, `placeholders.description`, `onSave.enable`,
   `generateModuleDocstring`.
-- [ ] `generateModuleDocstring`: when true, `generateFileInsertions` inserts a module-level
-  docstring if the file does not already begin with one (stub TODO already in parser.ts).
-- [ ] Thread `DocstringOptions` through all builder and command functions.
-- [ ] Trigger and commands read config on each invocation (no caching).
+- [x] `generateModuleDocstring`: when true, `generateFileInsertions` inserts a module-level
+  docstring if the file does not already begin with one.
+- [x] Thread `DocstringOptions` through all builder and command functions (`trigger.ts`,
+  `commands.ts`, `onSave.ts`). `includeTypes` threaded through `mergeDocstring` via `MergeOpts`.
+- [x] Config read on each invocation (no caching).
+- [x] `format` is `"auto" | "google" | "numpy" | "sphinx"`; `returns.mode` simplified to
+  `"always" | "non-none"`; defaults aligned between `package.json` and `DEFAULT_OPTIONS`.
 
 ---
 
-## Phase 6 — NumPy and Sphinx Format Builders
+## Phase 6 — NumPy and Sphinx Format Builders ✅
 
 Depends on Phase 5 (`format` config option).
 
-- [ ] `buildNumpyDocstring` in `src/parser.ts`.
-- [ ] `buildSphinxDocstring` in `src/parser.ts`.
-- [ ] Trigger and commands dispatch to the correct builder based on `format` config.
-- [ ] Extend `docstringParser.ts` to parse NumPy and Sphinx sections.
-- [ ] Tests for both builders and parsers.
+- [x] `buildNumpyDocstring` / `buildNumpyDocstringText` in `src/parser.ts` — NumPy section
+  headers with dashed underlines; `Parameters\n----------\nname : type\n    desc`; `Returns\n-------\ntype\n    desc`.
+- [x] `buildSphinxDocstring` / `buildSphinxDocstringText` in `src/parser.ts` — `:param name:`,
+  `:type name:`, `:returns:`, `:rtype:` fields.
+- [x] `buildDocstring` / `buildDocstringText` dispatch helpers in `src/parser.ts` — route to the
+  correct builder based on `opts.format`; fall back to Google for `"auto"`.
+- [x] `trigger.ts` and `commands.ts` use `buildDocstring` / `buildDocstringText`; `generateFileInsertions`
+  uses `buildDocstringText` — all three formats now flow through the trigger and all commands.
+- [x] `parseNumpyDocstring` in `src/docstringParser.ts` — section detection via dashes underline
+  pattern; parses Parameters, Returns, Yields, Raises, and unknown sections.
+- [x] `parseSphinxDocstring` in `src/docstringParser.ts` — parses `:param:`, `:type:`,
+  `:returns:`, `:rtype:`, `:raises:` fields.
+- [x] 38 new unit tests in `src/test/unit/formats.test.ts` covering all builders and parsers.
 
 ---
 
@@ -134,23 +145,24 @@ Depends on Phase 5 (`format` config option).
 
 ## File Map
 
-| File                                        | Status        | Role                                                                                                   |
-| ------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
-| `src/parser.ts`                             | exists        | Pure logic: sig parsing, docstring building, file insertions                                           |
-| `src/trigger.ts`                            | exists        | Inline completion provider (vscode adapter)                                                            |
-| `src/extension.ts`                          | exists        | Activation, provider/command registration                                                              |
-| `src/commands.ts`                           | exists        | `generate`, `generateFile` (Phase 2); `update`, `updateFile`, `convert`, `convertFileFormat` (Phase 3) |
-| `src/codeAction.ts`                         | exists        | Lightbulb code action provider                                                                         |
-| `src/docstringParser.ts`                    | exists        | Parse existing docstring sections; merge logic; render                                                 |
-| `src/onSave.ts`                             | exists        | On-save trigger                                                                                        |
-| `src/config.ts`                             | **to create** | Typed config reader                                                                                    |
-| `src/test/unit/parser.test.ts`              | exists        | Sig parsing, builders, file insertions                                                                 |
-| `src/test/unit/commands.test.ts`            | exists        | hasDocstring, buildGoogleDocstringText, generateFileInsertions, applyInsertions                        |
-| `src/test/unit/docstringParser.test.ts`     | exists        | parseGoogleDocstring, mergeDocstring, renderGoogleDocstring, buildUpdateText                           |
-| `src/test/integration/generateFile.test.ts` | exists        | Fixture-driven generate tests                                                                          |
-| `src/test/integration/updateFile.test.ts`   | exists        | Fixture-driven update tests                                                                            |
-| `src/test/fixtures/basic.input.py`          | exists        | Input for generate integration test                                                                    |
-| `src/test/fixtures/basic.expected.py`       | exists        | Expected output for generate integration test                                                          |
-| `src/test/fixtures/update.input.py`         | exists        | Input for update integration test (stale docstrings)                                                   |
-| `src/test/fixtures/update.expected.py`      | exists        | Expected output for update integration test                                                            |
+| File                                        | Status | Role                                                                                                   |
+| ------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
+| `src/parser.ts`                             | exists | Pure logic: sig parsing, docstring building, file insertions                                           |
+| `src/trigger.ts`                            | exists | Inline completion provider (vscode adapter)                                                            |
+| `src/extension.ts`                          | exists | Activation, provider/command registration                                                              |
+| `src/commands.ts`                           | exists | `generate`, `generateFile` (Phase 2); `update`, `updateFile`, `convert`, `convertFileFormat` (Phase 3) |
+| `src/codeAction.ts`                         | exists | Lightbulb code action provider                                                                         |
+| `src/docstringParser.ts`                    | exists | Parse existing docstring sections; merge logic; render                                                 |
+| `src/onSave.ts`                             | exists | On-save trigger                                                                                        |
+| `src/config.ts`                             | exists | Typed config reader                                                                                    |
+| `src/test/unit/parser.test.ts`              | exists | Sig parsing, builders, file insertions                                                                 |
+| `src/test/unit/commands.test.ts`            | exists | hasDocstring, buildGoogleDocstringText, generateFileInsertions, applyInsertions                        |
+| `src/test/unit/docstringParser.test.ts`     | exists | parseGoogleDocstring, mergeDocstring, renderGoogleDocstring, buildUpdateText                           |
+| `src/test/integration/generateFile.test.ts` | exists | Fixture-driven generate tests                                                                          |
+| `src/test/integration/updateFile.test.ts`   | exists | Fixture-driven update tests                                                                            |
+| `src/test/unit/formats.test.ts`             | exists | NumPy/Sphinx builders and parsers                                                                      |
+| `src/test/fixtures/basic.input.py`          | exists | Input for generate integration test                                                                    |
+| `src/test/fixtures/basic.expected.py`       | exists | Expected output for generate integration test                                                          |
+| `src/test/fixtures/update.input.py`         | exists | Input for update integration test (stale docstrings)                                                   |
+| `src/test/fixtures/update.expected.py`      | exists | Expected output for update integration test                                                            |
 

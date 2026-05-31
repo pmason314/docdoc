@@ -511,7 +511,7 @@ function generateFileInsertions(lines, opts = {}) {
     const defIndent = (text.match(/^(\s*)/) ?? ["", ""])[1];
     const bodyIndent = defIndent + "    ";
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
-    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, {
+    const docText = buildDocstringText(found.sig, bodyIndent, quoteChar, {
       isGenerator,
       ...opts
     });
@@ -648,6 +648,188 @@ function buildUpdateText(lines, defLine, opts = {}) {
   const text = renderGoogleDocstring(merged, parseResult.indent, parseResult.quoteChar);
   return { text, startLine: parseResult.startLine, endLine: parseResult.endLine };
 }
+function buildNumpyDocstring(sig, _indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
+  const paramIndent = "    ";
+  let n = 1;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `
+
+Parameters
+----------
+`;
+    for (const p of sig.params) {
+      const typeStr = includeTypes && p.annotation ? ` : ${p.annotation}` : "";
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${p.name}${typeStr}
+${paramIndent}\${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}
+`;
+    }
+  }
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const dashes = "-".repeat(sectionLabel.length);
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${sectionLabel}
+${dashes}
+`;
+    const typeStr = sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}
+` : "";
+    out += `${typeStr}${paramIndent}\${${n++}:${descPlaceholder}}
+`;
+  }
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
+}
+function buildNumpyDocstringText(sig, indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
+  const paramIndent = indent + "    ";
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `
+
+${indent}Parameters
+${indent}----------
+`;
+    for (const p of sig.params) {
+      const typeStr = includeTypes && p.annotation ? ` : ${p.annotation}` : "";
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${indent}${p.name}${typeStr}
+${paramIndent}${descPlaceholder}${descSuffix}${defaultsNote}
+`;
+    }
+  }
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const dashes = "-".repeat(sectionLabel.length);
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}${sectionLabel}
+${indent}${dashes}
+`;
+    const typeStr = sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${indent}${sig.returnAnnotation}
+` : "";
+    out += `${typeStr}${paramIndent}${descPlaceholder}
+`;
+  }
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+function buildSphinxDocstring(sig, _indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
+  let n = 1;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `
+
+`;
+    for (const p of sig.params) {
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `:param ${p.name}: \${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}
+`;
+      if (includeTypes && p.annotation) {
+        out += `:type ${p.name}: ${p.annotation}
+`;
+      }
+    }
+  }
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionPrefix = out.endsWith("\n") ? "" : "\n\n";
+    out += `${sectionPrefix}:returns: \${${n++}:${descPlaceholder}}
+`;
+    if (sig.returnAnnotation && sig.returnAnnotation !== "None") {
+      out += `:rtype: ${sig.returnAnnotation}
+`;
+    }
+  }
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
+}
+function buildSphinxDocstringText(sig, indent, quoteChar, opts = {}) {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false
+  } = opts;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `
+
+`;
+    for (const p of sig.params) {
+      const defaultsNote = includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${indent}:param ${p.name}: ${descPlaceholder}${descSuffix}${defaultsNote}
+`;
+      if (includeTypes && p.annotation) {
+        out += `${indent}:type ${p.name}: ${p.annotation}
+`;
+      }
+    }
+  }
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionPrefix = out.endsWith("\n") ? "" : "\n\n";
+    out += `${sectionPrefix}${indent}:returns: ${descPlaceholder}
+`;
+    if (sig.returnAnnotation && sig.returnAnnotation !== "None") {
+      out += `${indent}:rtype: ${sig.returnAnnotation}
+`;
+    }
+  }
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+function buildDocstring(sig, indent, quoteChar, opts = {}) {
+  switch (opts.format) {
+    case "numpy":
+      return buildNumpyDocstring(sig, indent, quoteChar, opts);
+    case "sphinx":
+      return buildSphinxDocstring(sig, indent, quoteChar, opts);
+    default:
+      return buildGoogleDocstring(sig, indent, quoteChar, opts);
+  }
+}
+function buildDocstringText(sig, indent, quoteChar, opts = {}) {
+  switch (opts.format) {
+    case "numpy":
+      return buildNumpyDocstringText(sig, indent, quoteChar, opts);
+    case "sphinx":
+      return buildSphinxDocstringText(sig, indent, quoteChar, opts);
+    default:
+      return buildGoogleDocstringText(sig, indent, quoteChar, opts);
+  }
+}
 
 // src/codeAction.ts
 var GenerateDocstringActionProvider = class {
@@ -750,7 +932,7 @@ async function generate(editor) {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
-  const docText = buildGoogleDocstringText(sig, bodyIndent, opts.quoteChar, {
+  const docText = buildDocstringText(sig, bodyIndent, opts.quoteChar, {
     isGenerator,
     ...opts
   });
@@ -938,7 +1120,7 @@ var DocstringTrigger = class {
     let snippetBody;
     if (found) {
       const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      snippetBody = buildGoogleDocstring(found.sig, indent, quoteChar, { isGenerator, ...opts });
+      snippetBody = buildDocstring(found.sig, indent, quoteChar, { isGenerator, ...opts });
     } else if (isModuleLevelLines(lines, position.line - 1)) {
       const summaryPeriod = opts.summaryPlaceholder.includes(".") ? "" : ".";
       snippetBody = `\${1:${opts.summaryPlaceholder}}${summaryPeriod}

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import {
   applyInsertions,
-  buildGoogleDocstringText,
+  buildDocstringText,
   buildUpdateText,
   findSignatureFromLines,
   generateFileInsertions,
@@ -74,7 +74,7 @@ export async function generate(editor: vscode.TextEditor): Promise<void> {
   const defIndent = (defText.match(/^(\s*)/) ?? ["", ""])[1];
   const bodyIndent = defIndent + "    ";
   const isGenerator = isGeneratorFunction(lines, defLine, sigEndLine + 1);
-  const docText = buildGoogleDocstringText(sig, bodyIndent, opts.quoteChar, {
+  const docText = buildDocstringText(sig, bodyIndent, opts.quoteChar, {
     isGenerator,
     ...opts,
   });

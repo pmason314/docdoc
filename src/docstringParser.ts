@@ -289,3 +289,319 @@ export function parseGoogleDocstring(
 
   return { startLine: openingLine, endLine, indent, quoteChar, parsed };
 }
+
+// ---------------------------------------------------------------------------
+// NumPy-style parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a NumPy-style docstring whose opening quotes are on `openingLine`.
+ *
+ * NumPy sections look like:
+ *   Parameters
+ *   ----------
+ *   x : int
+ *       Description.
+ *
+ * Returns `null` for non-docstring lines or unterminated docstrings.
+ */
+export function parseNumpyDocstring(
+  lines: string[],
+  openingLine: number,
+): DocstringParseResult | null {
+  const line0 = lines[openingLine];
+  const openMatch = /^(\s*)("""|''')(.*)$/.exec(line0);
+  if (!openMatch) return null;
+
+  const [, indent, quoteChar, restRaw] = openMatch;
+  const rest = restRaw.trimEnd();
+
+  // One-liner
+  if (rest.endsWith(quoteChar)) {
+    return {
+      startLine: openingLine,
+      endLine: openingLine,
+      indent,
+      quoteChar,
+      parsed: emptyDocstring(rest.slice(0, -quoteChar.length).trim()),
+    };
+  }
+
+  // Find closing quotes
+  let endLine = -1;
+  for (let i = openingLine + 1; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith(quoteChar)) {
+      endLine = i;
+      break;
+    }
+  }
+  if (endLine === -1) return null;
+
+  // Extract summary
+  let summary = rest.trim();
+  let bodyStart = openingLine + 1;
+  if (!summary) {
+    while (bodyStart < endLine && lines[bodyStart].trim() === "") bodyStart++;
+    if (bodyStart < endLine) {
+      summary = lines[bodyStart].trim();
+      bodyStart++;
+    }
+  }
+
+  // Group into sections by detecting "Header\n------" pattern
+  type RawSection = { header: string; lines: string[] };
+  const rawSections: RawSection[] = [];
+  const extendedLines: string[] = [];
+  let currentSection: RawSection | null = null;
+
+  let i = bodyStart;
+  while (i < endLine) {
+    const raw = lines[i];
+    const content = raw.trimEnd();
+    const trimmed = content.trimStart();
+
+    // Check if the NEXT line is a dashes underline → this line is a section header
+    const nextTrimmed = i + 1 < endLine ? lines[i + 1].trim() : "";
+    if (nextTrimmed && /^-+$/.test(nextTrimmed) && trimmed) {
+      currentSection = { header: trimmed, lines: [] };
+      rawSections.push(currentSection);
+      i += 2; // skip header + dashes line
+      continue;
+    }
+
+    if (currentSection) {
+      currentSection.lines.push(raw);
+    } else if (trimmed) {
+      extendedLines.push(content);
+    }
+    i++;
+  }
+
+  const parsed: ParsedDocstring = {
+    ...emptyDocstring(summary),
+    extendedSummary: extendedLines.join("\n").replace(/^\n+|\n+$/g, ""),
+  };
+
+  for (const section of rawSections) {
+    // Parse NumPy entries: each entry starts with "name" or "name : type" at the
+    // section indent level; continuation lines are indented one extra level.
+    const entryIndent = indent + "    ";
+
+    switch (section.header) {
+      case "Parameters":
+      case "Params": {
+        const params: ParsedDocstringParam[] = [];
+        let current: ParsedDocstringParam | null = null;
+        // Entry lines are at the docstring's own indent level (same as section header);
+        // continuation lines are indented one extra level.
+        const sectionIndentLen = indent.length;
+        for (const raw of section.lines) {
+          const line = raw.trimEnd();
+          if (!line.trim()) continue;
+          const leadingWS = line.length - line.trimStart().length;
+          if (leadingWS <= sectionIndentLen) {
+            if (current) params.push(current);
+            // "name" or "name : type"
+            const parts = line.trimStart().split(/\s*:\s*/);
+            current = {
+              name: parts[0].trim(),
+              typehint: parts[1]?.trim() ?? null,
+              description: "",
+            };
+          } else if (current) {
+            const cont = line.trimStart();
+            current.description = current.description ? `${current.description}\n${cont}` : cont;
+          }
+        }
+        if (current) params.push(current);
+        parsed.params = params;
+        break;
+      }
+
+      case "Returns":
+      case "Return":
+      case "Yields":
+      case "Yield": {
+        // NumPy Returns: optional type line at section indent, then description
+        let typehint: string | null = null;
+        const descLines: string[] = [];
+        for (const raw of section.lines) {
+          const line = raw.trimEnd();
+          if (!line.trim()) continue;
+          const leadingWS = line.length - line.trimStart().length;
+          if (leadingWS <= entryIndent.length && !typehint && descLines.length === 0) {
+            // Could be a type line — only treat as type if it doesn't look like a sentence
+            const candidate = line.trimStart();
+            if (!/\s/.test(candidate) || candidate.includes("[") || candidate.includes("|")) {
+              typehint = candidate;
+              continue;
+            }
+          }
+          descLines.push(line.trimStart());
+        }
+        const description = descLines.join("\n").trim();
+        const entry = { typehint, description };
+        if (section.header === "Yields" || section.header === "Yield") {
+          parsed.yields = entry;
+        } else {
+          parsed.returns = entry;
+        }
+        break;
+      }
+
+      case "Raises": {
+        const raises: ParsedDocstringRaise[] = [];
+        let current: ParsedDocstringRaise | null = null;
+        const sectionIndentLen = indent.length;
+        for (const raw of section.lines) {
+          const line = raw.trimEnd();
+          if (!line.trim()) continue;
+          const leadingWS = line.length - line.trimStart().length;
+          if (leadingWS <= sectionIndentLen) {
+            if (current) raises.push(current);
+            current = { exception: line.trimStart(), description: "" };
+          } else if (current) {
+            const cont = line.trimStart();
+            current.description = current.description ? `${current.description}\n${cont}` : cont;
+          }
+        }
+        if (current) raises.push(current);
+        parsed.raises = raises;
+        break;
+      }
+
+      default:
+        parsed.unknownSections.push({ header: section.header, lines: section.lines });
+        break;
+    }
+  }
+
+  return { startLine: openingLine, endLine, indent, quoteChar, parsed };
+}
+
+// ---------------------------------------------------------------------------
+// Sphinx (reST) parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a Sphinx (reStructuredText) docstring whose opening quotes are on `openingLine`.
+ *
+ * Sphinx fields look like:
+ *   :param name: Description.
+ *   :type name: int
+ *   :returns: Description.
+ *   :rtype: bool
+ *
+ * Returns `null` for non-docstring lines or unterminated docstrings.
+ */
+export function parseSphinxDocstring(
+  lines: string[],
+  openingLine: number,
+): DocstringParseResult | null {
+  const line0 = lines[openingLine];
+  const openMatch = /^(\s*)("""|''')(.*)$/.exec(line0);
+  if (!openMatch) return null;
+
+  const [, indent, quoteChar, restRaw] = openMatch;
+  const rest = restRaw.trimEnd();
+
+  // One-liner
+  if (rest.endsWith(quoteChar)) {
+    return {
+      startLine: openingLine,
+      endLine: openingLine,
+      indent,
+      quoteChar,
+      parsed: emptyDocstring(rest.slice(0, -quoteChar.length).trim()),
+    };
+  }
+
+  // Find closing quotes
+  let endLine = -1;
+  for (let i = openingLine + 1; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith(quoteChar)) {
+      endLine = i;
+      break;
+    }
+  }
+  if (endLine === -1) return null;
+
+  // Collect body lines
+  let summary = rest.trim();
+  let bodyStart = openingLine + 1;
+  if (!summary) {
+    while (bodyStart < endLine && lines[bodyStart].trim() === "") bodyStart++;
+    if (bodyStart < endLine) {
+      summary = lines[bodyStart].trim();
+      bodyStart++;
+    }
+  }
+
+  const parsed: ParsedDocstring = emptyDocstring(summary);
+
+  // Collect non-field lines as extended summary
+  const extendedLines: string[] = [];
+  // Collect :field: lines; multi-line fields use continuation (deeper indent)
+  const fieldLines: string[] = [];
+  let inFields = false;
+
+  for (let i = bodyStart; i < endLine; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    if (/^:[\w]/.test(trimmed)) {
+      inFields = true;
+      fieldLines.push(trimmed);
+    } else if (inFields && trimmed && raw.length - raw.trimStart().length > indent.length) {
+      // Continuation of previous field
+      fieldLines[fieldLines.length - 1] += " " + trimmed;
+    } else if (!inFields) {
+      extendedLines.push(raw.trimEnd());
+    }
+  }
+
+  parsed.extendedSummary = extendedLines.join("\n").replace(/^\n+|\n+$/g, "");
+
+  // Build a type map for :type name: annotations
+  const typeMap = new Map<string, string>();
+  for (const f of fieldLines) {
+    const typeMatch = /^:type\s+(\S+):\s*(.*)$/.exec(f);
+    if (typeMatch) typeMap.set(typeMatch[1], typeMatch[2].trim());
+  }
+
+  // Parse :param:, :returns:, :rtype:, :raises:
+  let returnsDesc: string | null = null;
+  let rtype: string | null = null;
+
+  for (const f of fieldLines) {
+    const paramMatch = /^:param\s+(\S+):\s*(.*)$/.exec(f);
+    if (paramMatch) {
+      parsed.params.push({
+        name: paramMatch[1],
+        typehint: typeMap.get(paramMatch[1]) ?? null,
+        description: paramMatch[2].trim(),
+      });
+      continue;
+    }
+    const returnsMatch = /^:returns?:\s*(.*)$/.exec(f);
+    if (returnsMatch) {
+      returnsDesc = returnsMatch[1].trim();
+      continue;
+    }
+    const rtypeMatch = /^:rtype:\s*(.*)$/.exec(f);
+    if (rtypeMatch) {
+      rtype = rtypeMatch[1].trim();
+      continue;
+    }
+    const raisesMatch = /^:raises?\s+(\S+):\s*(.*)$/.exec(f);
+    if (raisesMatch) {
+      parsed.raises.push({ exception: raisesMatch[1], description: raisesMatch[2].trim() });
+      continue;
+    }
+  }
+
+  if (returnsDesc !== null || rtype !== null) {
+    parsed.returns = { typehint: rtype, description: returnsDesc ?? "" };
+  }
+
+  return { startLine: openingLine, endLine, indent, quoteChar, parsed };
+}

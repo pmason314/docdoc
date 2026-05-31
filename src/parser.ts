@@ -496,7 +496,7 @@ export function generateFileInsertions(
     const bodyIndent = defIndent + "    ";
 
     const isGenerator = isGeneratorFunction(lines, found.defLine, sigEndLine + 1);
-    const docText = buildGoogleDocstringText(found.sig, bodyIndent, quoteChar, {
+    const docText = buildDocstringText(found.sig, bodyIndent, quoteChar, {
       isGenerator,
       ...opts,
     });
@@ -735,4 +735,255 @@ export function buildUpdateText(
   const text = renderGoogleDocstring(merged, parseResult.indent, parseResult.quoteChar);
 
   return { text, startLine: parseResult.startLine, endLine: parseResult.endLine };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: NumPy and Sphinx format builders
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a NumPy-style docstring as a raw VS Code snippet template string.
+ *
+ * Example for def foo(a: int) -> bool:
+ *
+ *   ${1:_summary_}
+ *
+ *   Parameters
+ *   ----------
+ *   a : int
+ *       ${2:_description_}
+ *
+ *   Returns
+ *   -------
+ *   bool
+ *       ${3:_description_}
+ *   """
+ */
+export function buildNumpyDocstring(
+  sig: ParsedSignature,
+  _indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
+  const paramIndent = "    ";
+  let n = 1;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
+
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `\n\nParameters\n----------\n`;
+    for (const p of sig.params) {
+      const typeStr = includeTypes && p.annotation ? ` : ${p.annotation}` : "";
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${p.name}${typeStr}\n${paramIndent}\${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}\n`;
+    }
+  }
+
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const dashes = "-".repeat(sectionLabel.length);
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${sectionLabel}\n${dashes}\n`;
+    const typeStr =
+      sig.returnAnnotation && sig.returnAnnotation !== "None" ? `${sig.returnAnnotation}\n` : "";
+    out += `${typeStr}${paramIndent}\${${n++}:${descPlaceholder}}\n`;
+  }
+
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
+}
+
+/** Plain-text NumPy docstring for WorkspaceEdit insertions. */
+export function buildNumpyDocstringText(
+  sig: ParsedSignature,
+  indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
+  const paramIndent = indent + "    ";
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
+
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `\n\n${indent}Parameters\n${indent}----------\n`;
+    for (const p of sig.params) {
+      const typeStr = includeTypes && p.annotation ? ` : ${p.annotation}` : "";
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${indent}${p.name}${typeStr}\n${paramIndent}${descPlaceholder}${descSuffix}${defaultsNote}\n`;
+    }
+  }
+
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionLabel = isGenerator ? "Yields" : "Returns";
+    const dashes = "-".repeat(sectionLabel.length);
+    const sectionPrefix = out.endsWith("\n") ? "\n" : "\n\n";
+    out += `${sectionPrefix}${indent}${sectionLabel}\n${indent}${dashes}\n`;
+    const typeStr =
+      sig.returnAnnotation && sig.returnAnnotation !== "None"
+        ? `${indent}${sig.returnAnnotation}\n`
+        : "";
+    out += `${typeStr}${paramIndent}${descPlaceholder}\n`;
+  }
+
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+
+/**
+ * Build a Sphinx (reStructuredText) docstring as a raw VS Code snippet template string.
+ *
+ * Example for def foo(a: int) -> bool:
+ *
+ *   ${1:_summary_}
+ *
+ *   :param a: ${2:_description_}
+ *   :type a: int
+ *   :returns: ${3:_description_}
+ *   :rtype: bool
+ *   """
+ */
+export function buildSphinxDocstring(
+  sig: ParsedSignature,
+  _indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
+  let n = 1;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `\${${n++}:${summaryPlaceholder}}${summaryPeriod}`;
+
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `\n\n`;
+    for (const p of sig.params) {
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `:param ${p.name}: \${${n++}:${descPlaceholder}}${descSuffix}${defaultsNote}\n`;
+      if (includeTypes && p.annotation) {
+        out += `:type ${p.name}: ${p.annotation}\n`;
+      }
+    }
+  }
+
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionPrefix = out.endsWith("\n") ? "" : "\n\n";
+    out += `${sectionPrefix}:returns: \${${n++}:${descPlaceholder}}\n`;
+    if (sig.returnAnnotation && sig.returnAnnotation !== "None") {
+      out += `:rtype: ${sig.returnAnnotation}\n`;
+    }
+  }
+
+  out += quoteChar;
+  return out.replace(/^[ \t]+$/gm, "");
+}
+
+/** Plain-text Sphinx docstring for WorkspaceEdit insertions. */
+export function buildSphinxDocstringText(
+  sig: ParsedSignature,
+  indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  const {
+    includeTypes = DEFAULT_OPTIONS.includeTypes,
+    includeDefaults = DEFAULT_OPTIONS.includeDefaults,
+    returnsMode = DEFAULT_OPTIONS.returnsMode,
+    summaryPlaceholder = DEFAULT_OPTIONS.summaryPlaceholder,
+    descPlaceholder = DEFAULT_OPTIONS.descPlaceholder,
+    isGenerator = false,
+  } = opts;
+  const summaryPeriod = summaryPlaceholder.includes(".") ? "" : ".";
+  let out = `${indent}${quoteChar}${summaryPlaceholder}${summaryPeriod}`;
+
+  if (sig.kind === "def" && sig.params.length > 0) {
+    out += `\n\n`;
+    for (const p of sig.params) {
+      const defaultsNote =
+        includeDefaults && p.defaultValue ? ` Defaults to ${p.defaultValue}.` : "";
+      const descSuffix = defaultsNote && !descPlaceholder.includes(".") ? "." : "";
+      out += `${indent}:param ${p.name}: ${descPlaceholder}${descSuffix}${defaultsNote}\n`;
+      if (includeTypes && p.annotation) {
+        out += `${indent}:type ${p.name}: ${p.annotation}\n`;
+      }
+    }
+  }
+
+  if (!shouldSkipReturn(sig, returnsMode)) {
+    const sectionPrefix = out.endsWith("\n") ? "" : "\n\n";
+    out += `${sectionPrefix}${indent}:returns: ${descPlaceholder}\n`;
+    if (sig.returnAnnotation && sig.returnAnnotation !== "None") {
+      out += `${indent}:rtype: ${sig.returnAnnotation}\n`;
+    }
+  }
+
+  out += out.endsWith("\n") ? `${indent}${quoteChar}` : quoteChar;
+  return out;
+}
+
+/**
+ * Dispatch to the correct snippet-string builder based on `opts.format`.
+ * Falls back to Google style for `"auto"`.
+ */
+export function buildDocstring(
+  sig: ParsedSignature,
+  indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  switch (opts.format) {
+    case "numpy":
+      return buildNumpyDocstring(sig, indent, quoteChar, opts);
+    case "sphinx":
+      return buildSphinxDocstring(sig, indent, quoteChar, opts);
+    default:
+      return buildGoogleDocstring(sig, indent, quoteChar, opts);
+  }
+}
+
+/**
+ * Dispatch to the correct plain-text builder based on `opts.format`.
+ * Falls back to Google style for `"auto"`.
+ */
+export function buildDocstringText(
+  sig: ParsedSignature,
+  indent: string,
+  quoteChar: string,
+  opts: Partial<DocstringOptions> & { isGenerator?: boolean } = {},
+): string {
+  switch (opts.format) {
+    case "numpy":
+      return buildNumpyDocstringText(sig, indent, quoteChar, opts);
+    case "sphinx":
+      return buildSphinxDocstringText(sig, indent, quoteChar, opts);
+    default:
+      return buildGoogleDocstringText(sig, indent, quoteChar, opts);
+  }
 }
