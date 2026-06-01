@@ -5,7 +5,7 @@ Automatically generate, update, and convert Python docstrings in **Google**, **N
 ## Features
 
 ### Inline trigger
-Type `"""` or `'''` on the line inside a function or class body to instantly get a docstring completion populated from the signature. Press `Tab` to confirm the suggestion, then use `Tab` again to jump between each placeholder field for function summaries, parameter descriptions, and so on.
+Type `"""` or `'''` on the line inside a function or class body to instantly get a docstring completion populated from the signature. Press `Tab` to confirm the suggestion, then press `Tab` again to jump between each placeholder field for function summaries, parameter descriptions, and so on.
 
 ### Commands
 All commands are available via the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) when a Python file is open.
