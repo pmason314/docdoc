@@ -1,69 +1,45 @@
+/**
+ * Inline completion provider.
+ *
+ * Fires when the user types `"""` or `'''` as the first non-whitespace content
+ * on a line inside (or just after) a function/class definition, and yields a
+ * snippet docstring as the completion.
+ */
 import * as vscode from "vscode";
-import {
-  buildDocstring,
-  detectRaises,
-  findSignatureFromLines,
-  isGeneratorFunction,
-  isModuleLevelLines,
-} from "./parser";
-import { readConfig } from "./config";
+import { getConfig } from "./config.js";
+import { buildSnippetForLine, findSignatureAtLine } from "./parser/index.js";
 
-function docLines(document: vscode.TextDocument): string[] {
-  return Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
-}
+// Characters that trigger inline completion
+const TRIGGER_CHARS = ['"', "'"];
 
 export class DocstringTrigger implements vscode.InlineCompletionItemProvider {
   provideInlineCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
-    context: vscode.InlineCompletionContext,
-    _token: vscode.CancellationToken,
-  ): vscode.InlineCompletionItem[] {
-    // Don't fight the autocomplete widget
-    if (context.selectedCompletionInfo) return [];
-
+  ): vscode.InlineCompletionList | null {
     const lineText = document.lineAt(position.line).text;
-    const textUpToCursor = lineText.slice(0, position.character);
+    const prefix = lineText.slice(0, position.character).trimStart();
 
-    // Detect triple quote at cursor: must end with """ or '''
-    const tripleQuoteMatch = /^(\s*)("""|''')$/.exec(textUpToCursor);
-    if (!tripleQuoteMatch) return [];
+    // Only activate on `"""` or `'''` typed as the full line prefix
+    const isDouble = prefix === '"""';
+    const isSingle = prefix === "'''";
+    if (!isDouble && !isSingle) return null;
 
-    const indent = tripleQuoteMatch[1];
-    const quoteChar = tripleQuoteMatch[2];
+    const cfg = getConfig();
+    // If the configured quote style doesn't match, skip
+    if (cfg.quoteStyle === "double" && !isDouble) return null;
+    if (cfg.quoteStyle === "single" && !isSingle) return null;
 
-    const lines = docLines(document);
-    const found = findSignatureFromLines(lines, position.line - 1);
-    const opts = readConfig(document.uri);
+    const lines = document.getText().split("\n");
+    const result = buildSnippetForLine(lines, position.line, cfg);
+    if (!result) return null;
 
-    let snippetBody: string;
-    if (found) {
-      const isGenerator = isGeneratorFunction(lines, found.defLine, position.line + 1);
-      const raises = detectRaises(lines, found.defLine, position.line + 1);
-      snippetBody = buildDocstring(found.sig, indent, quoteChar, { isGenerator, raises, ...opts });
-    } else if (isModuleLevelLines(lines, position.line - 1)) {
-      const summaryPeriod = opts.summaryPlaceholder.includes(".") ? "" : ".";
-      snippetBody = `\${1:${opts.summaryPlaceholder}}${summaryPeriod}\n${indent}${quoteChar}`;
-    } else {
-      return [];
-    }
+    // The snippet replaces the typed `"""` and continues from that position
+    const snippetItem = new vscode.InlineCompletionItem(
+      new vscode.SnippetString(result.snippet.slice(3)), // strip the leading `"""` already typed
+      new vscode.Range(position, position),
+    );
 
-    // Build the full snippet with explicit indentation on every line.
-    // We replace the entire trigger line so that neither ghost-text preview
-    // nor snippet acceptance need to apply indentation normalization.
-    const bodyLines = snippetBody.split("\n");
-    const fullSnippet =
-      indent +
-      quoteChar +
-      bodyLines[0] +
-      "\n" +
-      bodyLines
-        .slice(1)
-        .map((l) => (l === "" ? "" : indent + l))
-        .join("\n");
-
-    const lineStart = new vscode.Position(position.line, 0);
-    const range = new vscode.Range(lineStart, position.with(undefined, lineText.length));
-    return [new vscode.InlineCompletionItem(new vscode.SnippetString(fullSnippet), range)];
+    return new vscode.InlineCompletionList([snippetItem]);
   }
 }

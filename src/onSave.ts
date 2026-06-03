@@ -1,30 +1,41 @@
+/**
+ * On-save handler: optionally auto-generate docstrings when a Python file
+ * is saved (disabled by default).
+ */
 import * as vscode from "vscode";
-import { generateFileInsertions } from "./parser";
-import { readConfig } from "./config";
+import { applyInsertions, generateFileInsertions } from "./parser/index.js";
+import { getConfig } from "./config.js";
 
 export function registerOnSaveHandler(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument(async (document: vscode.TextDocument) => {
-      if (document.languageId !== "python") return;
+  const disposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+    if (document.languageId !== "python") return;
 
-      const opts = readConfig(document.uri);
-      if (
-        !vscode.workspace
-          .getConfiguration("docdoc", document.uri)
-          .get<boolean>("onSave.enable", false)
-      )
-        return;
+    const cfg = getConfig();
+    if (!cfg || !vscode.workspace.getConfiguration("docdoc").get<boolean>("onSave.enable")) {
+      return;
+    }
 
-      const lines = Array.from({ length: document.lineCount }, (_, i) => document.lineAt(i).text);
-      const insertions = generateFileInsertions(lines, opts);
-      if (insertions.length === 0) return;
+    const editor = vscode.window.visibleTextEditors.find((e) => e.document === document);
+    if (!editor) return;
 
-      const edit = new vscode.WorkspaceEdit();
-      for (const ins of insertions) {
-        const insertPos = new vscode.Position(ins.afterLine + 1, 0);
-        edit.insert(document.uri, insertPos, ins.text + "\n");
-      }
-      await vscode.workspace.applyEdit(edit);
-    }),
-  );
+    const lines = document.getText().split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+
+    const insertions = generateFileInsertions(lines, cfg);
+    if (insertions.length === 0) return;
+
+    const resultLines = applyInsertions(lines, insertions);
+    const newText = resultLines.join("\n") + "\n";
+
+    const fullRange = new vscode.Range(
+      new vscode.Position(0, 0),
+      new vscode.Position(
+        document.lineCount - 1,
+        document.lineAt(document.lineCount - 1).text.length,
+      ),
+    );
+    await editor.edit((eb) => eb.replace(fullRange, newText));
+  });
+
+  context.subscriptions.push(disposable);
 }

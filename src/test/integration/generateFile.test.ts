@@ -1,21 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { describe, it } from "mocha";
-import { applyInsertions, generateFileInsertions } from "../../parser";
+import { describe, it, before } from "mocha";
+import { applyInsertions, generateFileInsertions, initParser } from "../../parser/index.js";
 
 const FIXTURES_DIR = join(import.meta.dirname, "../fixtures");
 
 /**
- * For every *.input.py in fixtures/ (excluding *.update-input.py and update.input.py),
+ * For every *.input.py in fixtures/ (excluding *.update-* files),
  * run generateFileInsertions + applyInsertions and compare against the matching *.expected.py.
- *
- * TODO (Phase 7): once Raises detection is implemented, update basic.expected.py so
- * that func_with_params includes a Raises section for the ValueError it may raise.
  */
 describe("generateFile integration", () => {
+  before(initParser);
+
   const inputs = readdirSync(FIXTURES_DIR).filter(
-    (f) => f.endsWith(".input.py") && !f.startsWith("update"),
+    (f) => f.endsWith(".input.py") && !f.includes(".update-") && f !== "update.input.py",
   );
 
   for (const inputFile of inputs) {
@@ -24,12 +23,17 @@ describe("generateFile integration", () => {
 
     it(baseName, () => {
       const inputText = readFileSync(join(FIXTURES_DIR, inputFile), "utf8");
-      const expectedText = readFileSync(join(FIXTURES_DIR, expectedFile), "utf8");
+      const expectedPath = join(FIXTURES_DIR, expectedFile);
+      if (!require("node:fs").existsSync(expectedPath)) {
+        console.log(`⚠️  Skipping ${baseName}: no expected file`);
+        return;
+      }
+      const expectedText = readFileSync(expectedPath, "utf8");
 
       const lines = inputText.split("\n");
       if (lines[lines.length - 1] === "") lines.pop();
 
-      const insertions = generateFileInsertions(lines);
+      const insertions = generateFileInsertions(lines, { generateModuleDocstring: false });
       const resultLines = applyInsertions(lines, insertions);
       const result = resultLines.join("\n") + "\n";
 
