@@ -34,10 +34,38 @@ export class DocstringTrigger implements vscode.InlineCompletionItemProvider {
     const result = buildSnippetForLine(lines, position.line, cfg);
     if (!result) return null;
 
-    // The snippet replaces the typed `"""` and continues from that position
+    // The snippet starts with `<bodyIndent><quotes>…`.  Fix up indentation
+    // when tree-sitter misparses (e.g. another docstring exists later in the
+    // file, causing bodyIndent to be wrong).
+    const quote = isDouble ? '"""' : "'''";
+    const quoteIdx = result.snippet.indexOf(quote);
+    const snippetBodyIndent = result.snippet.slice(0, quoteIdx);
+    const triggerIndent = lineText.slice(0, lineText.length - lineText.trimStart().length);
+
+    let snippet = result.snippet;
+
+    // Normalize all lines to use the trigger line's actual indentation
+    if (snippetBodyIndent !== triggerIndent) {
+      const snippetLines = snippet.split("\n");
+      for (let i = 0; i < snippetLines.length; i++) {
+        if (snippetBodyIndent === "") {
+          snippetLines[i] = triggerIndent + snippetLines[i];
+        } else if (snippetLines[i].startsWith(snippetBodyIndent)) {
+          snippetLines[i] = triggerIndent + snippetLines[i].slice(snippetBodyIndent.length);
+        }
+      }
+      snippet = snippetLines.join("\n");
+    }
+
+    // Use a range starting at column 0 so VS Code's snippet adjustWhitespace
+    // sees an empty reference indent and won't add extra indentation on
+    // acceptance.  The snippet contains the full line (indent + quotes + body)
+    // which gives correct ghost text display AND correct accepted text.
+    const lineStart = new vscode.Position(position.line, 0);
+    const lineEnd = new vscode.Position(position.line, lineText.length);
     const snippetItem = new vscode.InlineCompletionItem(
-      new vscode.SnippetString(result.snippet.slice(3)), // strip the leading `"""` already typed
-      new vscode.Range(position, position),
+      new vscode.SnippetString(snippet),
+      new vscode.Range(lineStart, lineEnd),
     );
 
     return new vscode.InlineCompletionList([snippetItem]);

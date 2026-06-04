@@ -38,7 +38,9 @@ function buildGoogleLines(
     return [`${indent}${q}${ph(cfg.placeholderSummary)}.${q}`];
   }
 
-  // Determine sections
+  // Determine sections — build these after reserving tab stop 1 for the
+  // summary so it's the first tab stop the user lands on.
+  const summaryPh = ph(cfg.placeholderSummary);
   const argLines = buildArgsLines(sig.params, indent, cfg, ph);
   const retLines = buildReturnsLines(sig, indent, cfg, ph);
   const raisesLines = buildRaisesLines(sig.raises, indent, cfg, ph);
@@ -46,7 +48,7 @@ function buildGoogleLines(
   const sections = [argLines, retLines, raisesLines].filter((s) => s.length > 0);
 
   const lines: string[] = [];
-  lines.push(`${indent}${q}${ph(cfg.placeholderSummary)}.`);
+  lines.push(`${indent}${q}${summaryPh}.`);
 
   for (const section of sections) {
     lines.push(""); // blank line before each section
@@ -99,6 +101,10 @@ function buildReturnsLines(
   if (cfg.returnsMode === "non-none" && sig.returnType === "None") return [];
 
   const header = sig.isGenerator ? `${indent}Yields:` : `${indent}Returns:`;
+  // None returns are self-documenting — omit the description and colon.
+  if (sig.returnType === "None") {
+    return [header, `${indent}    None`];
+  }
   const typePart = sig.returnType ? `${sig.returnType}: ` : "";
   return [header, `${indent}    ${typePart}${ph(cfg.placeholderDescription)}`];
 }

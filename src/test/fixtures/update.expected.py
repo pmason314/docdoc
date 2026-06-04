@@ -45,7 +45,7 @@ def no_return_now(x: int) -> None:
         x (int): the value
 
     Returns:
-        None: this should disappear
+        None
     """
     print(x)
 
@@ -57,7 +57,7 @@ def one_liner_gains_param(a: int) -> None:
         a (int): _description_
 
     Returns:
-        None: _description_
+        None
     """
     print(a)
 

@@ -46,7 +46,7 @@ def multiline_signature(
         d (bool): _description_. Defaults to True.
 
     Returns:
-        None: _description_
+        None
     """
     pass
 

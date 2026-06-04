@@ -46,7 +46,7 @@ def multiline_signature(
         d (bool): _description_. Defaults to True.
 
     Returns:
-        None: _description_
+        None
     """
     pass
 
@@ -76,12 +76,27 @@ def with_custom_docstring_sections(value: str):
     """Process and analyse the value.
 
     Args:
-        value (str): _description_
+        value (str): The input value to process.
 
     Returns:
-        dict: _description_
+        dict: The processed result.
 
     Note:
-        This is a custom section that should be preserved.
+        This function has special behavior depending on the input.
+        Always ensure inputs are validated before use.
+
+    Examples:
+        >>> with_custom_docstring_sections("test")
+        {'result': 'test_processed'}
+        >>> with_custom_docstring_sections("other")
+        {'result': 'other_processed'}
+
+    See Also:
+        other_processor: Another related function.
+        validate_input: Input validation helper.
+
+    References:
+        - https://example.com/docs
+        - Algorithm based on paper XYZ
     """
     return {"result": f"{value}_processed"}

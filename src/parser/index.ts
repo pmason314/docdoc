@@ -41,6 +41,7 @@ function resolveConfig(cfg?: Partial<BuildConfig>): BuildConfig {
 export function findSignatureAtLine(lines: string[], lineNum: number): Signature | null {
   const code = lines.join("\n");
   const tree = parseCode(code);
+  if (!tree) return null;
   const found = findDefNodeAtLine(tree, lineNum);
   if (!found) return null;
   return extractSignature(found.def, found.decorated) ?? null;
@@ -61,6 +62,7 @@ export function generateFileInsertions(
   const cfg = resolveConfig(config);
   const code = lines.join("\n");
   const tree = parseCode(code);
+  if (!tree) return [];
 
   const insertions: Insertion[] = [];
 
@@ -123,11 +125,15 @@ export function getUpdateOperations(lines: string[], config?: Partial<BuildConfi
   const cfg = resolveConfig(config);
   const code = lines.join("\n");
   const tree = parseCode(code);
+  if (!tree) return [];
   const replacements: Replacement[] = [];
 
   const sigs = extractAllSignatures(tree);
   for (const sig of sigs) {
-    const found = findDefNodeAtLine(tree, sig.defLine);
+    // Use the actual indentation of the def line so descendantForPosition starts
+    // inside the def/class node rather than in the surrounding scope.
+    const defCol = (lines[sig.defLine] ?? "").match(/^(\s*)/)?.[1]?.length ?? 0;
+    const found = findDefNodeAtLine(tree, sig.defLine, defCol);
     if (!found) continue;
 
     const stmtNode = getDocstringStmtNode(found.def);
@@ -179,6 +185,7 @@ export function buildDocstringForLine(
 
   const code = lines.join("\n");
   const tree = parseCode(code);
+  if (!tree) return null;
   const found = findDefNodeAtLine(tree, sig.defLine);
   if (!found || hasDocstring(found.def)) return null;
 
@@ -217,6 +224,7 @@ export function buildUpdateForLine(
   const cfg = resolveConfig(config);
   const code = lines.join("\n");
   const tree = parseCode(code);
+  if (!tree) return null;
 
   const found = findDefNodeAtLine(tree, lineNum);
   if (!found) return null;

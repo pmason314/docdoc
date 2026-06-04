@@ -96,6 +96,10 @@ function renderGoogleReturn(
   header: string,
 ): string[] | null {
   if (!ret) return null;
+  // None returns are self-documenting — omit the description and colon.
+  if (ret.type === "None") {
+    return [`${indent}${header}:`, `${indent}    None`];
+  }
   const typePart = ret.type ? `${ret.type}: ` : "";
   return [`${indent}${header}:`, `${indent}    ${typePart}${ret.description}`];
 }
@@ -109,8 +113,13 @@ function renderGoogleRaises(raises: ParsedRaisesEntry[], indent: string): string
 }
 
 function renderGoogleCustom(cs: CustomSection, indent: string): string[] {
+  // Trim trailing blank lines to avoid double-blank-lines between adjacent sections.
+  let end = cs.contentLines.length;
+  while (end > 0 && cs.contentLines[end - 1].trim() === "") end--;
+
   const lines = [`${indent}${cs.header}`];
-  for (const l of cs.contentLines) {
+  for (let i = 0; i < end; i++) {
+    const l = cs.contentLines[i];
     lines.push(l.trim() === "" ? "" : `${indent}    ${l}`);
   }
   return lines;

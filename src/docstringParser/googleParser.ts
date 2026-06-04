@@ -92,7 +92,13 @@ function normalizeLines(docLines: string[], indent: string, quotes: string): str
 
     if (i === 0) {
       // Strip indent + opening quotes
-      const stripped = raw.trimStart().slice(quotes.length);
+      let stripped = raw.trimStart().slice(quotes.length);
+      // One-liner: opening and closing quotes on the same line — strip trailing quotes
+      if (i === docLines.length - 1) {
+        if (stripped.endsWith(quotes)) stripped = stripped.slice(0, -quotes.length);
+        result.push(stripped);
+        continue;
+      }
       result.push(stripped);
       continue;
     }

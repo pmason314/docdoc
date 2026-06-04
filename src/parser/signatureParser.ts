@@ -10,6 +10,7 @@
  *   expression_statement, string, block
  */
 import type Parser from "web-tree-sitter";
+import type { Node as SyntaxNode, Tree } from "web-tree-sitter";
 import type { Param, ParamKind, Signature } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,7 @@ import type { Param, ParamKind, Signature } from "../types.js";
 // ---------------------------------------------------------------------------
 
 /** Collect all function/class signatures from a parsed tree (DFS, nested included). */
-export function extractAllSignatures(tree: Parser.Tree): Signature[] {
+export function extractAllSignatures(tree: Tree): Signature[] {
   const sigs: Signature[] = [];
   visitNode(tree.rootNode, sigs);
   return sigs;
@@ -26,15 +27,20 @@ export function extractAllSignatures(tree: Parser.Tree): Signature[] {
 /**
  * Find the innermost function_definition or class_definition node that
  * contains `line` (0-based), walking upward from that position.
+ *
+ * `column` defaults to 0 but callers that know the indentation of the def line
+ * should pass it so `descendantForPosition` starts inside the node rather than
+ * in the surrounding scope (which would walk up to the wrong parent).
  */
 export function findDefNodeAtLine(
-  tree: Parser.Tree,
+  tree: Tree,
   line: number,
-): { def: Parser.SyntaxNode; decorated?: Parser.SyntaxNode } | null {
+  column = 0,
+): { def: SyntaxNode; decorated?: SyntaxNode } | null {
   // Start from the node at the given line/column and walk up.
-  let node: Parser.SyntaxNode | null = tree.rootNode.descendantForPosition({
+  let node: SyntaxNode | null = tree.rootNode.descendantForPosition({
     row: line,
-    column: 0,
+    column,
   });
 
   while (node) {
@@ -50,8 +56,8 @@ export function findDefNodeAtLine(
 
 /** Return a Signature for the def/class node (+ optional decorated wrapper). */
 export function extractSignature(
-  defNode: Parser.SyntaxNode,
-  decoratedNode?: Parser.SyntaxNode,
+  defNode: SyntaxNode,
+  decoratedNode?: SyntaxNode,
 ): Signature | null {
   const isFunction = defNode.type === "function_definition";
   const isClass = defNode.type === "class_definition";
@@ -118,7 +124,7 @@ export function extractSignature(
 // ---------------------------------------------------------------------------
 
 /** True if the body's first non-comment statement is a string literal. */
-export function hasDocstring(defNode: Parser.SyntaxNode): boolean {
+export function hasDocstring(defNode: SyntaxNode): boolean {
   return getDocstringStmtNode(defNode) !== null;
 }
 
@@ -126,7 +132,7 @@ export function hasDocstring(defNode: Parser.SyntaxNode): boolean {
  * Return the expression_statement node holding the docstring,
  * or null if none.
  */
-export function getDocstringStmtNode(defNode: Parser.SyntaxNode): Parser.SyntaxNode | null {
+export function getDocstringStmtNode(defNode: SyntaxNode): SyntaxNode | null {
   const bodyNode = defNode.childForFieldName("body");
   if (!bodyNode) return null;
 
@@ -141,7 +147,7 @@ export function getDocstringStmtNode(defNode: Parser.SyntaxNode): Parser.SyntaxN
 }
 
 /** True if the module's first statement is a string literal. */
-export function hasModuleDocstring(tree: Parser.Tree): boolean {
+export function hasModuleDocstring(tree: Tree): boolean {
   for (const child of tree.rootNode.children) {
     if (!child.isNamed || child.type === "comment") continue;
     if (child.type !== "expression_statement") return false;
@@ -156,7 +162,7 @@ export function hasModuleDocstring(tree: Parser.Tree): boolean {
 // ---------------------------------------------------------------------------
 
 /** DFS walker that collects signatures. Recurses into body of each def/class. */
-function visitNode(node: Parser.SyntaxNode, sigs: Signature[]): void {
+function visitNode(node: SyntaxNode, sigs: Signature[]): void {
   if (node.type === "decorated_definition") {
     const defNode = node.childForFieldName("definition");
     if (
@@ -187,7 +193,7 @@ function visitNode(node: Parser.SyntaxNode, sigs: Signature[]): void {
   for (const child of node.children) visitNode(child, sigs);
 }
 
-function extractParams(paramsNode: Parser.SyntaxNode): Param[] {
+function extractParams(paramsNode: SyntaxNode): Param[] {
   const params: Param[] = [];
   let afterStar = false; // true once we've seen * or *args
 
@@ -276,8 +282,8 @@ function extractParams(paramsNode: Parser.SyntaxNode): Param[] {
 }
 
 /** True if the body contains a yield/yield-from outside nested defs. */
-function detectGenerator(bodyNode: Parser.SyntaxNode): boolean {
-  function search(node: Parser.SyntaxNode): boolean {
+function detectGenerator(bodyNode: SyntaxNode): boolean {
+  function search(node: SyntaxNode): boolean {
     if (node.type === "function_definition" || node.type === "class_definition") {
       return false;
     }
@@ -291,11 +297,11 @@ function detectGenerator(bodyNode: Parser.SyntaxNode): boolean {
  * Collect exception names from raise statements in the body.
  * Skips nested defs, bare `raise`, and names that start with lowercase.
  */
-function detectRaises(bodyNode: Parser.SyntaxNode): string[] {
+function detectRaises(bodyNode: SyntaxNode): string[] {
   const seen = new Set<string>();
   const order: string[] = [];
 
-  function search(node: Parser.SyntaxNode): void {
+  function search(node: SyntaxNode): void {
     if (node.type === "function_definition" || node.type === "class_definition") {
       return;
     }
@@ -318,7 +324,7 @@ function detectRaises(bodyNode: Parser.SyntaxNode): string[] {
   return order;
 }
 
-function resolveExceptionName(node: Parser.SyntaxNode): string | null {
+function resolveExceptionName(node: SyntaxNode): string | null {
   if (node.type === "identifier") return node.text;
   if (node.type === "call") {
     const fn = node.childForFieldName("function");

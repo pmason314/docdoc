@@ -23,6 +23,7 @@ export class GenerateDocstringActionProvider implements vscode.CodeActionProvide
       return null;
     }
 
+    if (!tree) return null;
     const found = findDefNodeAtLine(tree, line);
     if (!found) return null;
     if (hasDocstring(found.def)) return null;

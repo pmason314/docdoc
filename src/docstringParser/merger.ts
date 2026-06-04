@@ -37,22 +37,30 @@ export function mergeDocstring(
 function mergeArgs(existing: ParsedParam[], params: Param[], cfg: BuildConfig): ParsedParam[] {
   const existingMap = new Map(existing.map((p) => [p.name, p]));
 
-  return params.map((param): ParsedParam => {
-    const prev = existingMap.get(param.name);
-    const type = cfg.includeTypes ? param.type : undefined;
+  return params
+    .filter((param) => {
+      // Always keep params that were already in the docstring.
+      if (existingMap.has(param.name)) return true;
+      // For new params: only include those with a type annotation when types are shown.
+      // This avoids generating noise entries like `func: _description_` for untyped params.
+      return !cfg.includeTypes || param.type !== undefined;
+    })
+    .map((param): ParsedParam => {
+      const prev = existingMap.get(param.name);
+      const type = cfg.includeTypes ? param.type : undefined;
 
-    if (prev) {
-      return { ...prev, type };
-    }
+      if (prev) {
+        return { ...prev, type };
+      }
 
-    // New parameter — build a placeholder description
-    const kind = param.kind;
-    let desc = cfg.placeholderDescription;
-    if (cfg.includeDefaults && param.default !== undefined) {
-      desc += `. Defaults to ${param.default}.`;
-    }
-    return { name: param.name, type, description: desc, kind };
-  });
+      // New parameter — build a placeholder description
+      const kind = param.kind;
+      let desc = cfg.placeholderDescription;
+      if (cfg.includeDefaults && param.default !== undefined) {
+        desc += `. Defaults to ${param.default}.`;
+      }
+      return { name: param.name, type, description: desc, kind };
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +72,9 @@ function mergeReturns(
   sig: Signature,
   cfg: BuildConfig,
 ): { returns: ParsedReturn | undefined; yields: ParsedReturn | undefined } {
+  // Classes don't have return values.
+  if (sig.kind === "class") return { returns: undefined, yields: undefined };
+
   const shouldSkipReturns = cfg.returnsMode === "non-none" && sig.returnType === "None";
 
   if (sig.isGenerator) {
@@ -78,10 +89,11 @@ function mergeReturns(
   }
 
   // Regular function → Returns
+  // When there is no return annotation, preserve the existing type from the docstring.
   const returns = shouldSkipReturns
     ? undefined
     : parsed.returns
-      ? { type: sig.returnType, description: parsed.returns.description }
+      ? { type: sig.returnType ?? parsed.returns.type, description: parsed.returns.description }
       : { type: sig.returnType, description: cfg.placeholderDescription };
 
   return { returns, yields: undefined };

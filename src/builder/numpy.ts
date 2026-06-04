@@ -25,6 +25,8 @@ function buildNumpyLines(
     return [`${indent}${q}${ph(cfg.placeholderSummary)}.${q}`];
   }
 
+  // Reserve tab stop 1 for the summary so it's the first stop the user lands on.
+  const summaryPh = ph(cfg.placeholderSummary);
   const argLines = buildParamsLines(sig.params, indent, cfg, ph);
   const retLines = buildReturnsLines(sig, indent, cfg, ph);
   const raisesLines = buildRaisesLines(sig.raises, indent, cfg, ph);
@@ -32,7 +34,7 @@ function buildNumpyLines(
   const sections = [argLines, retLines, raisesLines].filter((s) => s.length > 0);
 
   const lines: string[] = [];
-  lines.push(`${indent}${q}${ph(cfg.placeholderSummary)}.`);
+  lines.push(`${indent}${q}${summaryPh}.`);
 
   for (const section of sections) {
     lines.push("");
@@ -85,6 +87,10 @@ function buildReturnsLines(
 
   const header = sig.isGenerator ? "Yields" : "Returns";
   const dashes = "-".repeat(header.length);
+  // None returns are self-documenting — omit the description line.
+  if (sig.returnType === "None") {
+    return [`${indent}${header}`, `${indent}${dashes}`, `${indent}None`];
+  }
   const typeLine = sig.returnType ?? "";
   return [
     `${indent}${header}`,

@@ -6,15 +6,25 @@
  *   - Development / mocha tests (tsx):  WASMs are in node_modules
  */
 import { existsSync, readFileSync } from "fs";
-import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { join, resolve } from "path";
 import { Parser, Language } from "web-tree-sitter";
+import type { Tree } from "web-tree-sitter";
 
 let parser: InstanceType<typeof Parser> | null = null;
 
+function getModuleDir(): string {
+  // Extension Development Host runs bundled CommonJS where __dirname
+  // points at out/.
+  if (typeof __dirname === "string" && __dirname.length > 0) {
+    return __dirname;
+  }
+
+  return process.cwd();
+}
+
 function resolveWasm(filename: string, packageName: string): string {
   // 1. Same directory as this file (bundled extension after esbuild copy).
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const moduleDir = getModuleDir();
   const localPath = join(moduleDir, filename);
   if (existsSync(localPath)) return localPath;
 
@@ -56,6 +66,6 @@ export function getParser(): InstanceType<typeof Parser> {
   return parser;
 }
 
-export function parseCode(code: string) {
+export function parseCode(code: string): Tree | null {
   return getParser().parse(code);
 }
