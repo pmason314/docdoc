@@ -220,6 +220,64 @@ def f():
     });
   });
 
+  describe("return value detection", () => {
+    it("detects return with a value", () => {
+      const code = "def f():\n    return 42";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, true);
+    });
+
+    it("detects return with an expression", () => {
+      const code = "def f(x):\n    return x + 1";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, true);
+    });
+
+    it("ignores bare return", () => {
+      const code = "def f():\n    return";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, false);
+    });
+
+    it("ignores return None", () => {
+      const code = "def f():\n    return None";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, false);
+    });
+
+    it("false when no return statement", () => {
+      const code = "def f():\n    print('hi')";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, false);
+    });
+
+    it("ignores return in nested function", () => {
+      const code = "def f():\n    def g():\n        return 42";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, false);
+    });
+
+    it("detects return in conditional branch", () => {
+      const code = "def f(x):\n    if x:\n        return x\n    return None";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, true);
+    });
+
+    it("false for class signatures", () => {
+      const code = "class C:\n    pass";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].hasReturnValue, false);
+    });
+  });
+
   describe("findDefNodeAtLine", () => {
     it("finds function at exact line", () => {
       const code = "def f():\n    pass";

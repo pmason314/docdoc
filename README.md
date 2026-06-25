@@ -86,17 +86,59 @@ Set `docdoc.format` to `"auto"` (the default) and the extension will read your `
 
 ## Configuration
 
-| Setting                              | Default           | Description                                                                                                    |
-| ------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| `docdoc.format`                      | `"auto"`          | Docstring format: `auto`, `google`, `numpy`, or `sphinx`                                                       |
-| `docdoc.quoteStyle`                  | `"double"`        | Quote style: `double` (`"""`) or `single` (`'''`)                                                              |
-| `docdoc.includeTypesFromAnnotations` | `true`            | Include type info in the docstring when a type annotation is present                                           |
-| `docdoc.includeDefaults`             | `true`            | Append `Defaults to X.` when a parameter has a default value                                                   |
-| `docdoc.returns.mode`                | `"always"`        | `always` — always include a Returns/Yields section; `non-none` — only when the return annotation is not `None` |
-| `docdoc.generateModuleDocstring`     | `true`            | Also insert a module-level docstring when running Generate All                                                 |
-| `docdoc.onSave.enable`               | `false`           | Auto-generate docstrings for undocumented functions and classes on save                                        |
-| `docdoc.placeholders.summary`        | `"_summary_"`     | Placeholder text for the summary line                                                                          |
-| `docdoc.placeholders.description`    | `"_description_"` | Placeholder text for parameter and return descriptions                                                         |
+| Setting                              | Default           | Description                                                                                                                           |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `docdoc.format`                      | `"auto"`          | Docstring format: `auto`, `google`, `numpy`, or `sphinx`                                                                              |
+| `docdoc.quoteStyle`                  | `"double"`        | Quote style: `double` (`"""`) or `single` (`'''`)                                                                                     |
+| `docdoc.includeTypesFromAnnotations` | `true`            | Include type info in the docstring when a type annotation is present                                                                  |
+| `docdoc.includeDefaults`             | `true`            | Append `Defaults to X.` when a parameter has a default value                                                                          |
+| `docdoc.returns.mode`                | `"auto"`          | `always` — always include a Returns/Yields section; `auto` — only when the function body returns a value or has a non-None annotation |
+| `docdoc.generateModuleDocstring`     | `true`            | Also insert a module-level docstring when running Generate All                                                                        |
+| `docdoc.onSave.enable`               | `false`           | Auto-generate docstrings for undocumented functions and classes on save                                                               |
+| `docdoc.placeholders.summary`        | `"_summary_"`     | Placeholder text for the summary line                                                                                                 |
+| `docdoc.placeholders.description`    | `"_description_"` | Placeholder text for parameter and return descriptions                                                                                |
+
+---
+
+## Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (via nvm or similar)
+- npm (bundled with Node.js)
+
+### Setup
+
+```sh
+git clone https://github.com/pmason314/docdoc.git
+cd docdoc
+npm install
+```
+
+### Building
+
+```sh
+npm run compile    # one-off build
+npm run watch      # rebuild on file changes
+```
+
+### Running the Extension
+
+Press `F5` in VS Code (or **Run → Start Debugging**) to launch an Extension Development Host window with the extension loaded. Any changes require recompiling and reloading the host (`Ctrl+Shift+P` → **Developer: Reload Window**).
+
+### Testing
+
+```sh
+npm test                  # all tests
+npm run test:unit         # unit tests only
+npm run test:integration  # integration tests only
+```
+
+### Linting
+
+```sh
+npm run lint
+```
 
 ---
 

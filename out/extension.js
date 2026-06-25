@@ -55,6 +55,9 @@ function buildGoogleLines(sig, indent, cfg, snippet) {
   const retLines = buildReturnsLines(sig, indent, cfg, ph);
   const raisesLines = buildRaisesLines(sig.raises, indent, cfg, ph);
   const sections = [argLines, retLines, raisesLines].filter((s) => s.length > 0);
+  if (sections.length === 0) {
+    return [`${indent}${q}${summaryPh}.${q}`];
+  }
   const lines = [];
   lines.push(`${indent}${q}${summaryPh}.`);
   for (const section of sections) {
@@ -79,7 +82,8 @@ function buildArgsLines(params, indent, cfg, ph) {
   return lines;
 }
 function buildReturnsLines(sig, indent, cfg, ph) {
-  if (cfg.returnsMode === "non-none" && sig.returnType === "None") return [];
+  if (cfg.returnsMode === "auto" && !sig.hasReturnValue && !sig.isGenerator && !(sig.returnType && sig.returnType !== "None"))
+    return [];
   const header = sig.isGenerator ? `${indent}Yields:` : `${indent}Returns:`;
   if (sig.returnType === "None") {
     return [header, `${indent}    None`];
@@ -115,6 +119,9 @@ function buildNumpyLines(sig, indent, cfg, snippet) {
   const retLines = buildReturnsLines2(sig, indent, cfg, ph);
   const raisesLines = buildRaisesLines2(sig.raises, indent, cfg, ph);
   const sections = [argLines, retLines, raisesLines].filter((s) => s.length > 0);
+  if (sections.length === 0) {
+    return [`${indent}${q}${summaryPh}.${q}`];
+  }
   const lines = [];
   lines.push(`${indent}${q}${summaryPh}.`);
   for (const section of sections) {
@@ -141,7 +148,8 @@ function buildParamsLines(params, indent, cfg, ph) {
   return lines;
 }
 function buildReturnsLines2(sig, indent, cfg, ph) {
-  if (cfg.returnsMode === "non-none" && sig.returnType === "None") return [];
+  if (cfg.returnsMode === "auto" && !sig.hasReturnValue && !sig.isGenerator && !(sig.returnType && sig.returnType !== "None"))
+    return [];
   const header = sig.isGenerator ? "Yields" : "Returns";
   const dashes = "-".repeat(header.length);
   if (sig.returnType === "None") {
@@ -179,13 +187,15 @@ function buildSphinxLines(sig, indent, cfg, snippet) {
   if (sig.kind === "class") {
     return [`${indent}${q}${ph(cfg.placeholderSummary)}.${q}`];
   }
-  const lines = [];
-  lines.push(`${indent}${q}${ph(cfg.placeholderSummary)}.`);
+  const summaryPh = ph(cfg.placeholderSummary);
   const body = buildSphinxBody(sig, indent, cfg, ph);
-  if (body.length > 0) {
-    lines.push("");
-    lines.push(...body);
+  if (body.length === 0) {
+    return [`${indent}${q}${summaryPh}.${q}`];
   }
+  const lines = [];
+  lines.push(`${indent}${q}${summaryPh}.`);
+  lines.push("");
+  lines.push(...body);
   lines.push(`${indent}${q}`);
   return lines;
 }
@@ -205,7 +215,7 @@ function buildSphinxBody(sig, indent, cfg, ph) {
   if (sig.params.length > 0 && (sig.returnType || sig.raises.length > 0)) {
     lines.push("");
   }
-  const includeReturns = cfg.returnsMode === "always" || cfg.returnsMode === "non-none" && sig.returnType !== "None";
+  const includeReturns = cfg.returnsMode === "always" || cfg.returnsMode === "auto" && (sig.hasReturnValue || sig.isGenerator || sig.returnType !== void 0 && sig.returnType !== "None");
   if (includeReturns) {
     const retLabel = sig.isGenerator ? "yields" : "returns";
     lines.push(`${indent}:${retLabel}: ${ph(cfg.placeholderDescription)}`);
@@ -696,7 +706,7 @@ function mergeArgs(existing, params, cfg) {
 }
 function mergeReturns(parsed, sig, cfg) {
   if (sig.kind === "class") return { returns: void 0, yields: void 0 };
-  const shouldSkipReturns = cfg.returnsMode === "non-none" && sig.returnType === "None";
+  const shouldSkipReturns = cfg.returnsMode === "auto" && !sig.hasReturnValue && !sig.isGenerator && !(sig.returnType && sig.returnType !== "None");
   if (sig.isGenerator) {
     const existingYields = parsed.yields ?? parsed.returns;
     const yields = shouldSkipReturns ? void 0 : existingYields ? { type: sig.returnType, description: existingYields.description } : { type: sig.returnType, description: cfg.placeholderDescription };
@@ -934,6 +944,7 @@ function extractSignature(defNode, decoratedNode) {
     isGenerator = detectGenerator(bodyNode);
     raises = detectRaises(bodyNode);
   }
+  const hasReturnValue = isFunction ? detectReturnValue(bodyNode) : false;
   const decorators = [];
   if (decoratedNode) {
     for (const child of decoratedNode.children) {
@@ -947,6 +958,7 @@ function extractSignature(defNode, decoratedNode) {
     name: nameNode.text,
     params,
     returnType,
+    hasReturnValue,
     isAsync,
     isGenerator,
     raises,
@@ -1080,6 +1092,19 @@ function extractParams(paramsNode) {
   }
   return params;
 }
+function detectReturnValue(bodyNode) {
+  function search(node) {
+    if (node.type === "function_definition" || node.type === "class_definition") {
+      return false;
+    }
+    if (node.type === "return_statement") {
+      const expr = node.children.find((c) => c.isNamed);
+      return !!expr && expr.text !== "None";
+    }
+    return node.children.some((c) => search(c));
+  }
+  return search(bodyNode);
+}
 function detectGenerator(bodyNode) {
   function search(node) {
     if (node.type === "function_definition" || node.type === "class_definition") {
@@ -1178,7 +1203,7 @@ var DEFAULT_CONFIG = {
   quoteStyle: "double",
   includeTypes: true,
   includeDefaults: true,
-  returnsMode: "always",
+  returnsMode: "auto",
   generateModuleDocstring: true,
   placeholderSummary: "_summary_",
   placeholderDescription: "_description_"
@@ -1285,7 +1310,13 @@ function buildDocstringForLine(lines, lineNum, config) {
 }
 function buildSnippetForLine(lines, lineNum, config) {
   const cfg = resolveConfig(config);
-  const sig = findSignatureAtLine(lines, lineNum);
+  const code = lines.join("\n");
+  const tree = parseCode(code);
+  if (!tree) return null;
+  const found = findDefNodeAtLine(tree, lineNum);
+  if (!found) return null;
+  if (hasDocstring(found.def)) return null;
+  const sig = extractSignature(found.def, found.decorated);
   if (!sig) return null;
   const bodyIndent = lines[sig.bodyStartLine]?.match(/^(\s*)/)?.[1] ?? "";
   const snippet = buildDocstringSnippet(sig, bodyIndent, cfg);

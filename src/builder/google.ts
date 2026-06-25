@@ -47,6 +47,11 @@ function buildGoogleLines(
 
   const sections = [argLines, retLines, raisesLines].filter((s) => s.length > 0);
 
+  // No sections → single-line docstring
+  if (sections.length === 0) {
+    return [`${indent}${q}${summaryPh}.${q}`];
+  }
+
   const lines: string[] = [];
   lines.push(`${indent}${q}${summaryPh}.`);
 
@@ -98,7 +103,13 @@ function buildReturnsLines(
   cfg: BuildConfig,
   ph: (text: string) => string,
 ): string[] {
-  if (cfg.returnsMode === "non-none" && sig.returnType === "None") return [];
+  if (
+    cfg.returnsMode === "auto" &&
+    !sig.hasReturnValue &&
+    !sig.isGenerator &&
+    !(sig.returnType && sig.returnType !== "None")
+  )
+    return [];
 
   const header = sig.isGenerator ? `${indent}Yields:` : `${indent}Returns:`;
   // None returns are self-documenting — omit the description and colon.

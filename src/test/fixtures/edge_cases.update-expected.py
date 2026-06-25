@@ -44,9 +44,6 @@ def multiline_signature(
         b (str): _description_
         c (Union[dict, list]): _description_
         d (bool): _description_. Defaults to True.
-
-    Returns:
-        None
     """
     pass
 

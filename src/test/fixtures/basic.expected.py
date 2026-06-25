@@ -77,9 +77,6 @@ def generator_func(n):
 def raises_func():
     """_summary_.
 
-    Returns:
-        _description_
-
     Raises:
         RuntimeError: _description_
     """
@@ -154,9 +151,6 @@ class SimpleClass:
         Args:
             x: _description_
             y: _description_. Defaults to 1.
-
-        Returns:
-            _description_
         """
         self.x = x
         self.y = y
@@ -207,9 +201,6 @@ class WithProperty:
 
         Args:
             val: _description_
-
-        Returns:
-            _description_
         """
         self._v = val
 
@@ -228,9 +219,6 @@ class WithProperty:
 
         Args:
             v: _description_
-
-        Returns:
-            _description_
         """
         self._v = v
 
@@ -313,11 +301,7 @@ def decorated(a, b):
 
 
 def try_except_reraise():
-    """_summary_.
-
-    Returns:
-        _description_
-    """
+    """_summary_."""
     try:
         1 / 0
     except ZeroDivisionError:

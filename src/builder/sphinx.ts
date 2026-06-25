@@ -25,14 +25,16 @@ function buildSphinxLines(
     return [`${indent}${q}${ph(cfg.placeholderSummary)}.${q}`];
   }
 
-  const lines: string[] = [];
-  lines.push(`${indent}${q}${ph(cfg.placeholderSummary)}.`);
-
+  const summaryPh = ph(cfg.placeholderSummary);
   const body = buildSphinxBody(sig, indent, cfg, ph);
-  if (body.length > 0) {
-    lines.push("");
-    lines.push(...body);
+  if (body.length === 0) {
+    return [`${indent}${q}${summaryPh}.${q}`];
   }
+
+  const lines: string[] = [];
+  lines.push(`${indent}${q}${summaryPh}.`);
+  lines.push("");
+  lines.push(...body);
 
   lines.push(`${indent}${q}`);
   return lines;
@@ -70,7 +72,11 @@ function buildSphinxBody(
   }
 
   const includeReturns =
-    cfg.returnsMode === "always" || (cfg.returnsMode === "non-none" && sig.returnType !== "None");
+    cfg.returnsMode === "always" ||
+    (cfg.returnsMode === "auto" &&
+      (sig.hasReturnValue ||
+        sig.isGenerator ||
+        (sig.returnType !== undefined && sig.returnType !== "None")));
 
   if (includeReturns) {
     const retLabel = sig.isGenerator ? "yields" : "returns";

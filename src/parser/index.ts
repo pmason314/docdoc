@@ -204,7 +204,17 @@ export function buildSnippetForLine(
   config?: Partial<BuildConfig>,
 ): { snippet: string; afterLine: number } | null {
   const cfg = resolveConfig(config);
-  const sig = findSignatureAtLine(lines, lineNum);
+  const code = lines.join("\n");
+  const tree = parseCode(code);
+  if (!tree) return null;
+
+  const found = findDefNodeAtLine(tree, lineNum);
+  if (!found) return null;
+
+  // Suppress if the function already has a complete docstring.
+  if (hasDocstring(found.def)) return null;
+
+  const sig = extractSignature(found.def, found.decorated);
   if (!sig) return null;
 
   const bodyIndent = lines[sig.bodyStartLine]?.match(/^(\s*)/)?.[1] ?? "";

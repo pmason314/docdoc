@@ -135,14 +135,14 @@
         },
         "docdoc.returns.mode": {
           "type": "string",
-          "default": "always",
+          "default": "auto",
           "enum": [
             "always",
-            "non-none"
+            "auto"
           ],
           "enumDescriptions": [
             "Always include a Returns or Yields section.",
-            "Only include a Returns section when the function has a non-None return annotation."
+            "Only include a Returns section when the function body returns a value or has a non-None return annotation."
           ],
           "description": "When to include a Returns (or Yields) section in the docstring."
         },
@@ -173,7 +173,7 @@
     "test:unit": "mocha --spec 'src/test/unit/**/*.test.ts'",
     "test:integration": "mocha --spec 'src/test/integration/**/*.test.ts'",
     "test:all": "mocha",
-    "test": "vscode-test"
+    "test": "mocha"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.0",

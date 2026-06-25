@@ -75,7 +75,11 @@ function mergeReturns(
   // Classes don't have return values.
   if (sig.kind === "class") return { returns: undefined, yields: undefined };
 
-  const shouldSkipReturns = cfg.returnsMode === "non-none" && sig.returnType === "None";
+  const shouldSkipReturns =
+    cfg.returnsMode === "auto" &&
+    !sig.hasReturnValue &&
+    !sig.isGenerator &&
+    !(sig.returnType && sig.returnType !== "None");
 
   if (sig.isGenerator) {
     // Generator → Yields

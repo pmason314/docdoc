@@ -25,7 +25,7 @@ export function getConfig(): BuildConfig {
     quoteStyle: ws.get<"double" | "single">("quoteStyle", DEFAULT_CONFIG.quoteStyle),
     includeTypes: ws.get<boolean>("includeTypesFromAnnotations", DEFAULT_CONFIG.includeTypes),
     includeDefaults: ws.get<boolean>("includeDefaults", DEFAULT_CONFIG.includeDefaults),
-    returnsMode: ws.get<"always" | "non-none">("returns.mode", DEFAULT_CONFIG.returnsMode),
+    returnsMode: ws.get<"always" | "auto">("returns.mode", DEFAULT_CONFIG.returnsMode),
     generateModuleDocstring: ws.get<boolean>(
       "generateModuleDocstring",
       DEFAULT_CONFIG.generateModuleDocstring,

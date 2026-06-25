@@ -18,6 +18,7 @@ export interface Signature {
   name: string;
   params: Param[]; // self / cls excluded
   returnType?: string;
+  hasReturnValue: boolean; // body contains `return <expr>` (not bare return)
   isAsync: boolean;
   isGenerator: boolean;
   raises: string[]; // deduplicated exception names
@@ -47,7 +48,7 @@ export interface BuildConfig {
   quoteStyle: "double" | "single";
   includeTypes: boolean;
   includeDefaults: boolean;
-  returnsMode: "always" | "non-none";
+  returnsMode: "always" | "auto";
   generateModuleDocstring: boolean;
   placeholderSummary: string;
   placeholderDescription: string;
@@ -58,7 +59,7 @@ export const DEFAULT_CONFIG: BuildConfig = {
   quoteStyle: "double",
   includeTypes: true,
   includeDefaults: true,
-  returnsMode: "always",
+  returnsMode: "auto",
   generateModuleDocstring: true,
   placeholderSummary: "_summary_",
   placeholderDescription: "_description_",

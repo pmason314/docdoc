@@ -93,6 +93,8 @@ export function extractSignature(
     raises = detectRaises(bodyNode);
   }
 
+  const hasReturnValue = isFunction ? detectReturnValue(bodyNode) : false;
+
   const decorators: string[] = [];
   if (decoratedNode) {
     for (const child of decoratedNode.children) {
@@ -108,6 +110,7 @@ export function extractSignature(
     name: nameNode.text,
     params,
     returnType,
+    hasReturnValue,
     isAsync,
     isGenerator,
     raises,
@@ -279,6 +282,26 @@ function extractParams(paramsNode: SyntaxNode): Param[] {
   }
 
   return params;
+}
+
+/**
+ * True if the body contains a `return <expr>` (not bare `return` or
+ * `return None`) outside nested defs.
+ */
+function detectReturnValue(bodyNode: SyntaxNode): boolean {
+  function search(node: SyntaxNode): boolean {
+    if (node.type === "function_definition" || node.type === "class_definition") {
+      return false;
+    }
+    if (node.type === "return_statement") {
+      // A bare `return` has no named children; `return None` has an
+      // identifier child whose text is "None".
+      const expr = node.children.find((c) => c.isNamed);
+      return !!expr && expr.text !== "None";
+    }
+    return node.children.some((c) => search(c));
+  }
+  return search(bodyNode);
 }
 
 /** True if the body contains a yield/yield-from outside nested defs. */
