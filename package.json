@@ -2,7 +2,7 @@
   "name": "docdoc",
   "displayName": "Docdoc - Automatic Python Docstrings",
   "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "pmason314",
   "icon": "resources/docdoc-icon.png",
   "license": "GPL-3.0-only",
