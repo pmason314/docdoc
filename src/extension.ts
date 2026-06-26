@@ -24,7 +24,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return;
   }
 
-  const PYTHON_SELECTOR: vscode.DocumentSelector = { language: "python" };
+  const PYTHON_SELECTOR: vscode.DocumentSelector = [
+    { language: "python" },
+    { language: "python", notebookType: "jupyter-notebook" },
+    { language: "python", notebookType: "interactive" },
+  ];
 
   // Inline completion ("""/ ''' trigger)
   context.subscriptions.push(

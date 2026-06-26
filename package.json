@@ -1,7 +1,7 @@
 {
   "name": "docdoc",
   "displayName": "Docdoc - Automatic Python Docstrings",
-  "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format..",
+  "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format.",
   "version": "0.1.4",
   "publisher": "pmason314",
   "icon": "resources/docdoc-icon.png",
@@ -27,7 +27,9 @@
     "sphinx"
   ],
   "activationEvents": [
-    "onLanguage:python"
+    "onLanguage:python",
+    "onNotebook:jupyter-notebook",
+    "onNotebook:interactive"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -61,27 +63,27 @@
       "commandPalette": [
         {
           "command": "docdoc.generate",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         },
         {
           "command": "docdoc.generateFile",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         },
         {
           "command": "docdoc.update",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         },
         {
           "command": "docdoc.updateFile",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         },
         {
           "command": "docdoc.convertFormat",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         },
         {
           "command": "docdoc.convertFileFormat",
-          "when": "editorLangId == python"
+          "when": "editorLangId == python || notebookCellResource"
         }
       ]
     },

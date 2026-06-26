@@ -2292,31 +2292,41 @@ var GenerateDocstringActionProvider = class {
 
 // src/onSave.ts
 var vscode5 = __toESM(require("vscode"));
+async function processDocument(document) {
+  if (document.languageId !== "python") return;
+  const cfg = getConfig();
+  if (!cfg || !vscode5.workspace.getConfiguration("docdoc").get("onSave.enable")) {
+    return;
+  }
+  const editor = vscode5.window.visibleTextEditors.find((e) => e.document === document);
+  if (!editor) return;
+  const lines = document.getText().split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  const insertions = generateFileInsertions(lines, cfg);
+  if (insertions.length === 0) return;
+  const resultLines = applyInsertions(lines, insertions);
+  const newText = resultLines.join("\n") + "\n";
+  const fullRange = new vscode5.Range(
+    new vscode5.Position(0, 0),
+    new vscode5.Position(
+      document.lineCount - 1,
+      document.lineAt(document.lineCount - 1).text.length
+    )
+  );
+  await editor.edit((eb) => eb.replace(fullRange, newText));
+}
 function registerOnSaveHandler(context) {
   const disposable = vscode5.workspace.onDidSaveTextDocument(async (document) => {
-    if (document.languageId !== "python") return;
-    const cfg = getConfig();
-    if (!cfg || !vscode5.workspace.getConfiguration("docdoc").get("onSave.enable")) {
-      return;
-    }
-    const editor = vscode5.window.visibleTextEditors.find((e) => e.document === document);
-    if (!editor) return;
-    const lines = document.getText().split("\n");
-    if (lines[lines.length - 1] === "") lines.pop();
-    const insertions = generateFileInsertions(lines, cfg);
-    if (insertions.length === 0) return;
-    const resultLines = applyInsertions(lines, insertions);
-    const newText = resultLines.join("\n") + "\n";
-    const fullRange = new vscode5.Range(
-      new vscode5.Position(0, 0),
-      new vscode5.Position(
-        document.lineCount - 1,
-        document.lineAt(document.lineCount - 1).text.length
-      )
-    );
-    await editor.edit((eb) => eb.replace(fullRange, newText));
+    await processDocument(document);
   });
-  context.subscriptions.push(disposable);
+  const notebookDisposable = vscode5.workspace.onDidSaveNotebookDocument(async (notebook) => {
+    for (const cell of notebook.notebook.getCells()) {
+      if (cell.kind === vscode5.NotebookCellKind.Code && cell.document.languageId === "python") {
+        await processDocument(cell.document);
+      }
+    }
+  });
+  context.subscriptions.push(disposable, notebookDisposable);
 }
 
 // src/extension.ts
@@ -2327,7 +2337,11 @@ async function activate(context) {
     vscode6.window.showErrorMessage(`Docdoc: Failed to initialise parser \u2014 ${String(err)}`);
     return;
   }
-  const PYTHON_SELECTOR = { language: "python" };
+  const PYTHON_SELECTOR = [
+    { language: "python" },
+    { language: "python", notebookType: "jupyter-notebook" },
+    { language: "python", notebookType: "interactive" }
+  ];
   context.subscriptions.push(
     vscode6.languages.registerInlineCompletionItemProvider(PYTHON_SELECTOR, new DocstringTrigger())
   );
