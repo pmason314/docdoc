@@ -34,7 +34,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode6 = __toESM(require("vscode"));
+var vscode7 = __toESM(require("vscode"));
 
 // src/builder/google.ts
 function buildGoogleText(sig, indent, cfg) {
@@ -1029,6 +1029,25 @@ function extractParams(paramsNode) {
         break;
       }
       case "typed_parameter": {
+        const listSplat = child.children.find((c) => c.type === "list_splat_pattern");
+        if (listSplat) {
+          const name2 = listSplat.children.find((c) => c.type === "identifier")?.text;
+          if (name2) {
+            const typeText2 = child.children.find((c) => c.type === "type")?.text;
+            params.push({ name: name2, type: typeText2, kind: "var_positional" });
+            afterStar = true;
+          }
+          break;
+        }
+        const dictSplat = child.children.find((c) => c.type === "dictionary_splat_pattern");
+        if (dictSplat) {
+          const name2 = dictSplat.children.find((c) => c.type === "identifier")?.text;
+          if (name2) {
+            const typeText2 = child.children.find((c) => c.type === "type")?.text;
+            params.push({ name: name2, type: typeText2, kind: "var_keyword" });
+          }
+          break;
+        }
         const name = child.children.find((c) => c.type === "identifier")?.text;
         if (!name || name === "self" || name === "cls") break;
         const typeText = child.children.find((c) => c.type === "type")?.text;
@@ -1292,6 +1311,39 @@ function applyReplacements(lines, replacements) {
   const result = [...lines];
   for (const rep of sorted) {
     result.splice(rep.startLine, rep.endLine - rep.startLine + 1, ...rep.newLines);
+  }
+  return result;
+}
+function getGenerateAndUpdateOperations(lines, config) {
+  const cfg = resolveConfig(config);
+  const code = lines.join("\n");
+  const tree = parseCode(code);
+  if (!tree) return { generated: 0, updated: 0, ops: [] };
+  const insertions = generateFileInsertions(lines, cfg);
+  const replacements = getUpdateOperations(lines, cfg);
+  return {
+    generated: insertions.length,
+    updated: replacements.length,
+    ops: [
+      ...insertions.map((i) => ({ pos: i.afterLine, lines: i.lines, kind: "insert" })),
+      ...replacements.map((r) => ({
+        pos: r.startLine,
+        lines: r.newLines,
+        kind: "replace",
+        replaceCount: r.endLine - r.startLine + 1
+      }))
+    ]
+  };
+}
+function applyGenerateAndUpdateOperations(lines, ops) {
+  const result = [...lines];
+  ops.sort((a, b) => b.pos - a.pos);
+  for (const op of ops) {
+    if (op.kind === "replace") {
+      result.splice(op.pos, op.replaceCount ?? 0, ...op.lines);
+    } else {
+      result.splice(op.pos + 1, 0, ...op.lines);
+    }
   }
   return result;
 }
@@ -2222,6 +2274,30 @@ async function convertFileFormat(editor) {
   );
   await editor.edit((eb) => eb.replace(fullRange, newText));
 }
+async function generateAndUpdateFile(editor) {
+  const cfg = getConfig();
+  const lines = editor.document.getText().split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  const { generated, updated, ops } = getGenerateAndUpdateOperations(lines, cfg);
+  if (ops.length === 0) {
+    vscode2.window.showInformationMessage("Docdoc: Nothing to do.");
+    return;
+  }
+  const resultLines = applyGenerateAndUpdateOperations(lines, ops);
+  const newText = resultLines.join("\n") + "\n";
+  const fullRange = new vscode2.Range(
+    new vscode2.Position(0, 0),
+    new vscode2.Position(
+      editor.document.lineCount - 1,
+      editor.document.lineAt(editor.document.lineCount - 1).text.length
+    )
+  );
+  await editor.edit((eb) => eb.replace(fullRange, newText));
+  const parts = [];
+  if (generated) parts.push(`${generated} generated`);
+  if (updated) parts.push(`${updated} updated`);
+  vscode2.window.showInformationMessage(`Docdoc: ${parts.join(", ")}.`);
+}
 
 // src/trigger.ts
 var vscode3 = __toESM(require("vscode"));
@@ -2329,12 +2405,354 @@ function registerOnSaveHandler(context) {
   context.subscriptions.push(disposable, notebookDisposable);
 }
 
+// src/tools.ts
+var vscode6 = __toESM(require("vscode"));
+async function readFileContent(uriOrPath) {
+  let uri;
+  if (typeof uriOrPath === "string") {
+    uri = uriOrPath.startsWith("file://") ? vscode6.Uri.parse(uriOrPath) : vscode6.Uri.file(uriOrPath);
+  } else {
+    uri = uriOrPath;
+  }
+  const bytes = await vscode6.workspace.fs.readFile(uri);
+  const content = new TextDecoder().decode(bytes);
+  const lines = content.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return { uri, content, lines };
+}
+async function writeFileContent(uri, newContent) {
+  const doc = vscode6.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
+  if (doc) {
+    const editor = vscode6.window.visibleTextEditors.find((e) => e.document === doc);
+    if (editor) {
+      const fullRange = new vscode6.Range(
+        new vscode6.Position(0, 0),
+        new vscode6.Position(doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length)
+      );
+      await editor.edit((eb) => eb.replace(fullRange, newContent));
+      return;
+    }
+  }
+  await vscode6.workspace.fs.writeFile(uri, new TextEncoder().encode(newContent));
+}
+function resolveConfig2(overrides) {
+  const base = getConfig();
+  return overrides?.format ? { ...base, format: overrides.format } : base;
+}
+async function processFiles(files, processor) {
+  const results = [];
+  for (const fileUri of files) {
+    try {
+      const result = await processor(fileUri);
+      results.push(result);
+    } catch (e) {
+      results.push({
+        uri: fileUri,
+        result: null,
+        error: e instanceof Error ? e.message : String(e)
+      });
+    }
+  }
+  return results;
+}
+var GenerateDocstringTool = class {
+  async invoke(options, _token) {
+    const { uri, files, line, format } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = resolveConfig2({ format });
+    const targetLine = line ?? 0;
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const result = buildDocstringForLine(lines, targetLine, cfg);
+      if (!result) {
+        return {
+          uri: fileUri,
+          result: null,
+          error: `No undocumented function or class found at line ${targetLine}.`
+        };
+      }
+      const insertions = [{ afterLine: result.afterLine, lines: result.docText.split("\n") }];
+      const newLines = applyInsertions(lines, insertions);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return { uri: fileUri, result: `Generated docstring at line ${result.afterLine + 1}.` };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var GenerateAllDocstringsTool = class {
+  async invoke(options, _token) {
+    const { uri, files, format } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = resolveConfig2({ format });
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const insertions = generateFileInsertions(lines, cfg);
+      if (insertions.length === 0) {
+        return { uri: fileUri, result: "Already documented." };
+      }
+      const newLines = applyInsertions(lines, insertions);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return { uri: fileUri, result: `Generated ${insertions.length} docstring(s).` };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var UpdateDocstringTool = class {
+  async invoke(options, _token) {
+    const { uri, files, line } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = getConfig();
+    const targetLine = line ?? 0;
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const replacement = buildUpdateForLine(lines, targetLine, cfg);
+      if (!replacement) {
+        return {
+          uri: fileUri,
+          result: null,
+          error: `No documented function or class found near line ${targetLine}.`
+        };
+      }
+      const newLines = applyReplacements(lines, [replacement]);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return {
+        uri: fileUri,
+        result: `Updated docstring spanning lines ${replacement.startLine + 1}-${replacement.endLine + 1}.`
+      };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var UpdateAllDocstringsTool = class {
+  async invoke(options, _token) {
+    const { uri, files } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = getConfig();
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const ops = getUpdateOperations(lines, cfg);
+      if (ops.length === 0) {
+        return { uri: fileUri, result: "No docstrings to update." };
+      }
+      const newLines = applyReplacements(lines, ops);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return { uri: fileUri, result: `Updated ${ops.length} docstring(s).` };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var ConvertDocstringTool = class {
+  async invoke(options, _token) {
+    const { uri, files, toFormat, line } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = { ...getConfig(), format: toFormat };
+    const targetLine = line ?? 0;
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const replacement = buildUpdateForLine(lines, targetLine, cfg);
+      if (!replacement) {
+        return {
+          uri: fileUri,
+          result: null,
+          error: `No documented function or class found near line ${targetLine}.`
+        };
+      }
+      const newLines = applyReplacements(lines, [replacement]);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return { uri: fileUri, result: `Converted docstring to ${toFormat} format.` };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var ConvertAllDocstringsTool = class {
+  async invoke(options, _token) {
+    const { uri, files, toFormat } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = { ...getConfig(), format: toFormat };
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const ops = getUpdateOperations(lines, cfg);
+      if (ops.length === 0) {
+        return { uri: fileUri, result: "No docstrings to convert." };
+      }
+      const newLines = applyReplacements(lines, ops);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      return {
+        uri: fileUri,
+        result: `Converted ${ops.length} docstring(s) to ${toFormat} format.`
+      };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+var GenerateAndUpdateAllDocstringsTool = class {
+  async invoke(options, _token) {
+    const { uri, files, format } = options.input;
+    const targetFiles = files || (uri ? [uri] : []);
+    if (targetFiles.length === 0) {
+      return new vscode6.LanguageModelToolResult([
+        new vscode6.LanguageModelTextPart(
+          "Provide either `uri` or `files` to specify target file(s)."
+        )
+      ]);
+    }
+    const cfg = resolveConfig2({ format });
+    const results = await processFiles(targetFiles, async (fileUri) => {
+      const { uri: parsedUri, lines } = await readFileContent(fileUri);
+      const { generated, updated, ops } = getGenerateAndUpdateOperations(lines, cfg);
+      if (ops.length === 0) {
+        return { uri: fileUri, result: "Nothing to do." };
+      }
+      const newLines = applyGenerateAndUpdateOperations(lines, ops);
+      const newContent = newLines.join("\n") + "\n";
+      await writeFileContent(parsedUri, newContent);
+      const parts = [];
+      if (generated) parts.push(`${generated} generated`);
+      if (updated) parts.push(`${updated} updated`);
+      return { uri: fileUri, result: `Docstrings ${parts.join(", ")}.` };
+    });
+    const successCount = results.filter((r) => !r.error).length;
+    const errorLines = results.filter((r) => r.error).map((r) => `- ${r.uri}: ${r.error}`).join("\n");
+    const successLines = results.filter((r) => !r.error).map((r) => `- ${r.uri}: ${r.result}`).join("\n");
+    let message = `Processed ${targetFiles.length} file(s), ${successCount} succeeded.`;
+    if (successLines) message += `
+
+Successes:
+${successLines}`;
+    if (errorLines) message += `
+
+Errors:
+${errorLines}`;
+    return new vscode6.LanguageModelToolResult([new vscode6.LanguageModelTextPart(message)]);
+  }
+};
+
 // src/extension.ts
 async function activate(context) {
   try {
     await initParser();
   } catch (err) {
-    vscode6.window.showErrorMessage(`Docdoc: Failed to initialise parser \u2014 ${String(err)}`);
+    vscode7.window.showErrorMessage(`Docdoc: Failed to initialise parser \u2014 ${String(err)}`);
     return;
   }
   const PYTHON_SELECTOR = [
@@ -2343,23 +2761,33 @@ async function activate(context) {
     { language: "python", notebookType: "interactive" }
   ];
   context.subscriptions.push(
-    vscode6.languages.registerInlineCompletionItemProvider(PYTHON_SELECTOR, new DocstringTrigger())
+    vscode7.languages.registerInlineCompletionItemProvider(PYTHON_SELECTOR, new DocstringTrigger())
   );
   context.subscriptions.push(
-    vscode6.languages.registerCodeActionsProvider(
+    vscode7.languages.registerCodeActionsProvider(
       PYTHON_SELECTOR,
       new GenerateDocstringActionProvider(),
-      { providedCodeActionKinds: [vscode6.CodeActionKind.QuickFix] }
+      { providedCodeActionKinds: [vscode7.CodeActionKind.QuickFix] }
     )
   );
-  const reg = (id, handler) => vscode6.commands.registerTextEditorCommand(id, handler);
+  const reg = (id, handler) => vscode7.commands.registerTextEditorCommand(id, handler);
   context.subscriptions.push(
     reg("docdoc.generate", generate),
     reg("docdoc.generateFile", generateFile),
     reg("docdoc.update", update),
     reg("docdoc.updateFile", updateFile),
+    reg("docdoc.generateAndUpdateFile", generateAndUpdateFile),
     reg("docdoc.convertFormat", convertFormat),
     reg("docdoc.convertFileFormat", convertFileFormat)
+  );
+  context.subscriptions.push(
+    vscode7.lm.registerTool("docdoc-generateDocstring", new GenerateDocstringTool()),
+    vscode7.lm.registerTool("docdoc-generateAllDocstrings", new GenerateAllDocstringsTool()),
+    vscode7.lm.registerTool("docdoc-updateDocstring", new UpdateDocstringTool()),
+    vscode7.lm.registerTool("docdoc-updateAllDocstrings", new UpdateAllDocstringsTool()),
+    vscode7.lm.registerTool("docdoc-generateAndUpdateAllDocstrings", new GenerateAndUpdateAllDocstringsTool()),
+    vscode7.lm.registerTool("docdoc-convertDocstring", new ConvertDocstringTool()),
+    vscode7.lm.registerTool("docdoc-convertAllDocstrings", new ConvertAllDocstringsTool())
   );
   registerOnSaveHandler(context);
 }

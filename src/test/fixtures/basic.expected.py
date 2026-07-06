@@ -340,3 +340,41 @@ def identity(x: T) -> T:
         T: _description_
     """
     return x
+
+
+def sum_all(*numbers: float) -> float:
+    """_summary_.
+
+    Args:
+        *numbers (float): _description_
+
+    Returns:
+        float: _description_
+    """
+    return sum(numbers)
+
+
+def join_strings(separator: str, *parts: str) -> str:
+    """_summary_.
+
+    Args:
+        separator (str): _description_
+        *parts (str): _description_
+
+    Returns:
+        str: _description_
+    """
+    return separator.join(parts)
+
+
+def log_message(level: str, **entries: str) -> dict[str, str]:
+    """_summary_.
+
+    Args:
+        level (str): _description_
+        **entries (str): _description_
+
+    Returns:
+        dict[str, str]: _description_
+    """
+    return {level: entries}

@@ -86,6 +86,30 @@ class MyClass:
       assert.deepEqual(kinds, ["regular", "var_positional", "keyword_only", "var_keyword"]);
     });
 
+    it("handles annotated *args and **kwargs", () => {
+      const code = "def f(*numbers: float, **entries: str): pass";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].params[0].name, "numbers");
+      assert.equal(sigs[0].params[0].type, "float");
+      assert.equal(sigs[0].params[0].kind, "var_positional");
+      assert.equal(sigs[0].params[1].name, "entries");
+      assert.equal(sigs[0].params[1].type, "str");
+      assert.equal(sigs[0].params[1].kind, "var_keyword");
+    });
+
+    it("handles mixed regular and annotated *args", () => {
+      const code = "def f(separator: str, *parts: str) -> str: pass";
+      const tree = parseCodeOrThrow(code);
+      const sigs = extractAllSignatures(tree);
+      assert.equal(sigs[0].params[0].name, "separator");
+      assert.equal(sigs[0].params[0].type, "str");
+      assert.equal(sigs[0].params[0].kind, "regular");
+      assert.equal(sigs[0].params[1].name, "parts");
+      assert.equal(sigs[0].params[1].type, "str");
+      assert.equal(sigs[0].params[1].kind, "var_positional");
+    });
+
     it("excludes self and cls", () => {
       const code = `
 def method(self, x): pass

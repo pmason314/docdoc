@@ -46,10 +46,14 @@
         "command": "docdoc.update",
         "title": "Python: Update Docstring"
       },
-      {
-        "command": "docdoc.updateFile",
-        "title": "Python: Update All Docstrings in File"
-      },
+        {
+          "command": "docdoc.updateFile",
+          "title": "Python: Update All Docstrings in File"
+        },
+        {
+          "command": "docdoc.generateAndUpdateFile",
+          "title": "Python: Generate and Update All Docstrings in File"
+        },
       {
         "command": "docdoc.convertFormat",
         "title": "Python: Convert Docstring Format"
@@ -75,6 +79,10 @@
         },
         {
           "command": "docdoc.updateFile",
+          "when": "editorLangId == python || notebookCellResource"
+        },
+        {
+          "command": "docdoc.generateAndUpdateFile",
           "when": "editorLangId == python || notebookCellResource"
         },
         {
@@ -164,7 +172,219 @@
           "description": "Placeholder text for the docstring's parameter and return descriptions."
         }
       }
-    }
+    },
+    "languageModelTools": [
+      {
+        "name": "docdoc-generateDocstring",
+        "displayName": "Generate Docstring",
+        "modelDescription": "Generate a Python docstring for a function or class at the specified line. Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "line": {
+              "type": "integer",
+              "description": "The 0-based line number of the function or class. Defaults to 0 if not specified."
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "google",
+                "numpy",
+                "sphinx"
+              ],
+              "description": "The docstring format to use. Defaults to the extension configuration."
+            }
+          }
+        }
+      },
+      {
+        "name": "docdoc-generateAllDocstrings",
+        "displayName": "Generate All Docstrings",
+        "modelDescription": "Generate docstrings for all undocumented functions and classes in one or more Python files. Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "google",
+                "numpy",
+                "sphinx"
+              ],
+              "description": "The docstring format to use. Defaults to the extension configuration."
+            }
+          }
+        }
+      },
+      {
+        "name": "docdoc-updateDocstring",
+        "displayName": "Update Docstring",
+        "modelDescription": "Update an existing docstring to match the current function or class signature. Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "line": {
+              "type": "integer",
+              "description": "The 0-based line number of the function or class. Defaults to 0 if not specified."
+            }
+          }
+        }
+      },
+      {
+        "name": "docdoc-updateAllDocstrings",
+        "displayName": "Update All Docstrings",
+        "modelDescription": "Update all docstrings in one or more Python files to match their current signatures. Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            }
+          }
+        }
+      },
+      {
+        "name": "docdoc-generateAndUpdateAllDocstrings",
+        "displayName": "Generate and Update All Docstrings",
+        "modelDescription": "Generate missing docstrings and update existing ones in one or more Python files. Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "google",
+                "numpy",
+                "sphinx"
+              ],
+              "description": "The docstring format to use. Defaults to the extension configuration."
+            }
+          }
+        }
+      },
+      {
+        "name": "docdoc-convertDocstring",
+        "displayName": "Convert Docstring Format",
+        "modelDescription": "Convert an existing docstring to a different format (Google, NumPy, or Sphinx). Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "toFormat": {
+              "type": "string",
+              "enum": [
+                "google",
+                "numpy",
+                "sphinx"
+              ],
+              "description": "The target docstring format."
+            },
+            "line": {
+              "type": "integer",
+              "description": "The 0-based line number of the function or class. Defaults to 0 if not specified."
+            }
+          },
+          "required": [
+            "toFormat"
+          ]
+        }
+      },
+      {
+        "name": "docdoc-convertAllDocstrings",
+        "displayName": "Convert All Docstrings Format",
+        "modelDescription": "Convert all docstrings in one or more Python files to a different format (Google, NumPy, or Sphinx). Supports batch processing via the `files` array. Files are modified directly.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "The file URI or path of a single Python file. Use either `uri` or `files`, not both."
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "An array of file URIs or paths to process in batch. Use either `uri` or `files`, not both."
+            },
+            "toFormat": {
+              "type": "string",
+              "enum": [
+                "google",
+                "numpy",
+                "sphinx"
+              ],
+              "description": "The target docstring format."
+            }
+          },
+          "required": [
+            "toFormat"
+          ]
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.js",

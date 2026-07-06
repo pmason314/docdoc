@@ -210,6 +210,30 @@ function extractParams(paramsNode: SyntaxNode): Param[] {
       }
 
       case "typed_parameter": {
+        // Handle annotated *args: typed_parameter(list_splat_pattern(*numbers), :, type(float))
+        const listSplat = child.children.find((c) => c.type === "list_splat_pattern");
+        if (listSplat) {
+          const name = listSplat.children.find((c) => c.type === "identifier")?.text;
+          if (name) {
+            const typeText = child.children.find((c) => c.type === "type")?.text;
+            params.push({ name, type: typeText, kind: "var_positional" });
+            afterStar = true;
+          }
+          break;
+        }
+
+        // Handle annotated **kwargs: typed_parameter(dictionary_splat_pattern(**entries), :, type(str))
+        const dictSplat = child.children.find((c) => c.type === "dictionary_splat_pattern");
+        if (dictSplat) {
+          const name = dictSplat.children.find((c) => c.type === "identifier")?.text;
+          if (name) {
+            const typeText = child.children.find((c) => c.type === "type")?.text;
+            params.push({ name, type: typeText, kind: "var_keyword" });
+          }
+          break;
+        }
+
+        // Regular typed parameter
         const name = child.children.find((c) => c.type === "identifier")?.text;
         if (!name || name === "self" || name === "cls") break;
         const typeText = child.children.find((c) => c.type === "type")?.text;

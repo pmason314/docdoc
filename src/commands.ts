@@ -6,9 +6,11 @@ import { getConfig } from "./config.js";
 import {
   applyInsertions,
   applyReplacements,
+  applyGenerateAndUpdateOperations,
   buildDocstringForLine,
   buildUpdateForLine,
   generateFileInsertions,
+  getGenerateAndUpdateOperations,
   getUpdateOperations,
 } from "./parser/index.js";
 
@@ -171,4 +173,37 @@ export async function convertFileFormat(editor: vscode.TextEditor): Promise<void
     ),
   );
   await editor.edit((eb) => eb.replace(fullRange, newText));
+}
+
+// -------
+// Generate and Update File (combined)
+// -------
+
+export async function generateAndUpdateFile(editor: vscode.TextEditor): Promise<void> {
+  const cfg = getConfig();
+  const lines = editor.document.getText().split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+
+  const { generated, updated, ops } = getGenerateAndUpdateOperations(lines, cfg);
+  if (ops.length === 0) {
+    vscode.window.showInformationMessage("Docdoc: Nothing to do.");
+    return;
+  }
+
+  const resultLines = applyGenerateAndUpdateOperations(lines, ops);
+  const newText = resultLines.join("\n") + "\n";
+
+  const fullRange = new vscode.Range(
+    new vscode.Position(0, 0),
+    new vscode.Position(
+      editor.document.lineCount - 1,
+      editor.document.lineAt(editor.document.lineCount - 1).text.length,
+    ),
+  );
+  await editor.edit((eb) => eb.replace(fullRange, newText));
+
+  const parts: string[] = [];
+  if (generated) parts.push(`${generated} generated`);
+  if (updated) parts.push(`${updated} updated`);
+  vscode.window.showInformationMessage(`Docdoc: ${parts.join(", ")}.`);
 }

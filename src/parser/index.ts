@@ -22,17 +22,17 @@ import { DEFAULT_CONFIG as _DEFAULT_CONFIG } from "../types.js";
 export { initParser } from "./treeSitter.js";
 export type { Signature, Insertion, Replacement, BuildConfig };
 
-// ---------------------------------------------------------------------------
+// ------------------------------------
 // Helper: resolve partial config
-// ---------------------------------------------------------------------------
+// ------------------------------------
 
 function resolveConfig(cfg?: Partial<BuildConfig>): BuildConfig {
   return { ..._DEFAULT_CONFIG, ...cfg };
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------
 // Signature lookup (single symbol, for commands / trigger)
-// ---------------------------------------------------------------------------
+// -----------------------------------
 
 /**
  * Find the innermost function/class definition that contains or is nearest
@@ -47,9 +47,9 @@ export function findSignatureAtLine(lines: string[], lineNum: number): Signature
   return extractSignature(found.def, found.decorated) ?? null;
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------
 // Generate (insert docstrings into file)
-// ---------------------------------------------------------------------------
+// ------------------------------------
 
 /**
  * Return an ordered list of insertions needed to add docstrings to all
@@ -113,9 +113,9 @@ export function applyInsertions(lines: string[], insertions: Insertion[]): strin
   return result;
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------
 // Update (sync existing docstrings with current signatures)
-// ---------------------------------------------------------------------------
+// ------------------------------------
 
 /**
  * Return replacements for every documented function/class in the file whose
@@ -166,9 +166,70 @@ export function applyReplacements(lines: string[], replacements: Replacement[]):
   return result;
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------
+// Generate + Update (combined)
+// ------------------------------------
+
+interface CombinedOp {
+  pos: number;
+  lines: string[];
+  kind: "insert" | "replace";
+  replaceCount?: number; // number of lines to delete for "replace"
+}
+
+/**
+ * Compute all insertions (for missing docstrings) and replacements (for
+ * existing ones) needed to make every function/class documented.
+ */
+export function getGenerateAndUpdateOperations(
+  lines: string[],
+  config?: Partial<BuildConfig>,
+): { generated: number; updated: number; ops: CombinedOp[] } {
+  const cfg = resolveConfig(config);
+  const code = lines.join("\n");
+  const tree = parseCode(code);
+  if (!tree) return { generated: 0, updated: 0, ops: [] };
+
+  const insertions = generateFileInsertions(lines, cfg);
+  const replacements = getUpdateOperations(lines, cfg);
+
+  return {
+    generated: insertions.length,
+    updated: replacements.length,
+    ops: [
+      ...insertions.map((i) => ({ pos: i.afterLine, lines: i.lines, kind: "insert" as const })),
+      ...replacements.map((r) => ({
+        pos: r.startLine,
+        lines: r.newLines,
+        kind: "replace" as const,
+        replaceCount: r.endLine - r.startLine + 1,
+      })),
+    ],
+  };
+}
+
+/** Apply combined insertions + replacements to a lines array. */
+export function applyGenerateAndUpdateOperations(
+  lines: string[],
+  ops: CombinedOp[],
+): string[] {
+  const result = [...lines];
+  ops.sort((a, b) => b.pos - a.pos);
+
+  for (const op of ops) {
+    if (op.kind === "replace") {
+      result.splice(op.pos, op.replaceCount ?? 0, ...op.lines);
+    } else {
+      result.splice(op.pos + 1, 0, ...op.lines);
+    }
+  }
+
+  return result;
+}
+
+// -----------------------------------
 // Single-symbol helpers (for commands)
-// ---------------------------------------------------------------------------
+// -----------------------------------
 
 /**
  * Build the plain-text docstring for the symbol at `lineNum`.
@@ -253,9 +314,9 @@ export function buildUpdateForLine(
   return { startLine: docStart, endLine: docEnd, newLines };
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------
 // Internal helpers
-// ---------------------------------------------------------------------------
+// -----------------------------------
 
 /** Find the line after which to insert a module-level docstring. */
 function findModuleDocInsertLine(lines: string[]): number | null {

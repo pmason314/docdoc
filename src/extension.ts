@@ -10,10 +10,20 @@ import {
   updateFile,
   convertFormat,
   convertFileFormat,
+  generateAndUpdateFile,
 } from "./commands.js";
 import { DocstringTrigger } from "./trigger.js";
 import { GenerateDocstringActionProvider } from "./codeAction.js";
 import { registerOnSaveHandler } from "./onSave.js";
+import {
+  GenerateDocstringTool,
+  GenerateAllDocstringsTool,
+  UpdateDocstringTool,
+  UpdateAllDocstringsTool,
+  GenerateAndUpdateAllDocstringsTool,
+  ConvertDocstringTool,
+  ConvertAllDocstringsTool,
+} from "./tools.js";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Initialise tree-sitter (async WASM load — happens once)
@@ -53,8 +63,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reg("docdoc.generateFile", generateFile),
     reg("docdoc.update", update),
     reg("docdoc.updateFile", updateFile),
+    reg("docdoc.generateAndUpdateFile", generateAndUpdateFile),
     reg("docdoc.convertFormat", convertFormat),
     reg("docdoc.convertFileFormat", convertFileFormat),
+  );
+
+  // LM Tools (available to any AI agent in VS Code)
+  context.subscriptions.push(
+    vscode.lm.registerTool("docdoc-generateDocstring", new GenerateDocstringTool()),
+    vscode.lm.registerTool("docdoc-generateAllDocstrings", new GenerateAllDocstringsTool()),
+    vscode.lm.registerTool("docdoc-updateDocstring", new UpdateDocstringTool()),
+    vscode.lm.registerTool("docdoc-updateAllDocstrings", new UpdateAllDocstringsTool()),
+    vscode.lm.registerTool("docdoc-generateAndUpdateAllDocstrings", new GenerateAndUpdateAllDocstringsTool()),
+    vscode.lm.registerTool("docdoc-convertDocstring", new ConvertDocstringTool()),
+    vscode.lm.registerTool("docdoc-convertAllDocstrings", new ConvertAllDocstringsTool()),
   );
 
   // On-save handler

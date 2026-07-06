@@ -137,3 +137,15 @@ T = TypeVar("T")
 
 def identity(x: T) -> T:
     return x
+
+
+def sum_all(*numbers: float) -> float:
+    return sum(numbers)
+
+
+def join_strings(separator: str, *parts: str) -> str:
+    return separator.join(parts)
+
+
+def log_message(level: str, **entries: str) -> dict[str, str]:
+    return {level: entries}
