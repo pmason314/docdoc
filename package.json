@@ -2,7 +2,7 @@
   "name": "docdoc",
   "displayName": "Docdoc - Automatic Python Docstrings",
   "description": "Automatically generate and update Python docstrings in Google, NumPy, or Sphinx format.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "pmason314",
   "icon": "resources/docdoc-icon.png",
   "license": "GPL-3.0-only",
@@ -46,14 +46,14 @@
         "command": "docdoc.update",
         "title": "Python: Update Docstring"
       },
-        {
-          "command": "docdoc.updateFile",
-          "title": "Python: Update All Docstrings in File"
-        },
-        {
-          "command": "docdoc.generateAndUpdateFile",
-          "title": "Python: Generate and Update All Docstrings in File"
-        },
+      {
+        "command": "docdoc.updateFile",
+        "title": "Python: Update All Docstrings in File"
+      },
+      {
+        "command": "docdoc.generateAndUpdateFile",
+        "title": "Python: Generate and Update All Docstrings in File"
+      },
       {
         "command": "docdoc.convertFormat",
         "title": "Python: Convert Docstring Format"
